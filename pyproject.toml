@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "A Python library that builds a structured, queryable repository graph so agents can retrieve targeted code and document context without reading an entire repository."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+anttrail = "anttrail.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9.0,<0.10.0"]
