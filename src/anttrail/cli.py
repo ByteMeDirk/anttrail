@@ -2,35 +2,62 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from anttrail.graph import GraphGenerator
+
+DISTRIBUTION_NAME = "anttrail"
+
+
+def get_version() -> str:
+    """Returns the installed package version."""
+    try:
+        return version(DISTRIBUTION_NAME)
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
+def existing_directory(value: str) -> Path:
+    """Handle CLI path value."""
+    path = Path(value).expanduser()
+
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(
+            f"Directory {value} does not exist."
+        )
+    return path.resolve()
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
     parser = argparse.ArgumentParser(
-        description="Generate a graph by crawling a directory."
+        prog="anttrail",
+        description="Generate a graph by crawling a directory, among other things.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     parser.add_argument(
-        "--directory", "-d",
-        required=True,
-        type=str,
+        "--version", "-v",
+        action="version",
+        version=f"%(prog)s {get_version()}",
+        help="Show version information and exit.",
+    )
+    parser.add_argument(
+        "directory",
+        metavar="DIRECTORY",
+        type=existing_directory,
         help="Directory to be crawled for graph generation.",
     )
     parser.add_argument(
         "--schema-version", "-s",
-        required=False,
-        default="",
-        type=str,
+        metavar="VERSION",
         help="Schema version to use for graph generation.",
     )
     parser.add_argument(
         "--output", "-o",
-        required=False,
-        default="",
-        type=str,
+        type=Path,
+        metavar="PATH",
         help=(
             "Output file where the graph will be written. If omitted, the graph "
             "is printed to the console as json. The filename extension selects the output "
@@ -38,9 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--validate", "-v",
-        default=False,
-        type=bool,
+        "--validate",
+        action="store_true",
         help=(
             "If set, the graph is validated before writing the graph."
         )
@@ -55,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ignore write failures, such as unsupported output formats.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity.",
+    )
 
     return parser
 
@@ -64,9 +96,9 @@ def main() -> None:
     args = build_parser().parse_args()
 
     graph_generator = GraphGenerator(
-        directory_path=Path(args.directory),
+        directory_path=args.directory,
         schema_version=args.schema_version,
-        output_path=Path(args.output),
+        output_path=args.output,
         silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )
