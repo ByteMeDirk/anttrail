@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from importlib.metadata import PackageNotFoundError, version
-from pydoc import describe
+from pathlib import Path
 
 from anttrail.graph import GraphGenerator
 
 DISTRIBUTION_NAME = "anttrail"
+
 
 def get_version() -> str:
     """Returns the installed package version."""
@@ -17,7 +17,8 @@ def get_version() -> str:
     except PackageNotFoundError:
         return "0+unknown"
 
-def existing_directory(value:str) -> Path:
+
+def existing_directory(value: str) -> Path:
     """Handle CLI path value."""
     path = Path(value).expanduser()
 

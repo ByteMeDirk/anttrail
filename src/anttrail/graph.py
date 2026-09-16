@@ -2,38 +2,13 @@
 import json
 from collections import defaultdict, deque
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from anttrail.files import SupportedReadFormats, SupportedWriteFormats
 from anttrail.models import BaseGraph, BaseNode, NodeType, EntityRelationshipType, BaseEdge, GraphIntegrity
-
-
-class SupportedReadFormats(Enum):
-    """Formats that the Graph Model can consume."""
-    MARKDOWN = {".md", ".markdown"}
-
-    def check(self, path: Path) -> bool:
-        """Return whether this format member supports ``path``."""
-        return path.suffix.lower() in self.value
-
-    @classmethod
-    def supports(cls, path: Path) -> bool:
-        """Return whether this format member supports ``path``."""
-        return any(format_.check(path) for format_ in cls)
-
-
-class SupportedWriteFormats(Enum):
-    """Formats that the Graph Model can output."""
-    JSON = {".json"}
-    YAML = {".yaml"}
-    TEXT = {".txt"}
-
-    def check(self, path: Path) -> bool:
-        """Return whether this format member supports ``path``."""
-        return path.suffix.lower() in self.value
 
 
 class GraphGenerator:
