@@ -1,7 +1,7 @@
 [project]
 name = "anttrail"
 version = "0.1.0"
-description = "A Python library that builds a structured, queryable repository graph so agents can retrieve targeted code and document context without reading an entire repository."
+description = "AntTrail is a lightweight Python library for building structured, queryable repository graphs. It helps agents and other software systems retrieve object context without reading or scraping an entire repository."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -15,3 +15,9 @@ anttrail = "anttrail.cli:main"
 [build-system]
 requires = ["uv_build>=0.9.0,<0.10.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "pytest>=9.1.1",
+]
