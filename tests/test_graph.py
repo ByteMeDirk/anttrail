@@ -10,6 +10,7 @@ import yaml
 from anttrail.files import UnsupportedWriteFormatError
 from anttrail.graph import GraphGenerator
 from anttrail.models import BaseNode, EntityRelationshipType, NodeType
+from anttrail.python_parser import SourceParseError
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -225,3 +226,106 @@ def test_validate_rejects_symbol_without_declaring_edge(tmp_path: Path) -> None:
 
     assert not integrity.is_valid
     assert integrity.invalid_containment_nodes == ["a.py::A"]
+
+
+PYTHON_ASSETS = Path(__file__).parent / "python_assets"
+
+
+def test_python_files_get_symbol_nodes() -> None:
+    generator = GraphGenerator(PYTHON_ASSETS)
+    generator.run()
+
+    nodes = {node.id: node for node in generator.graph.nodes}
+    assert nodes["shapes.py::Shape"].type is NodeType.CLASS
+    assert nodes["shapes.py::Shape.area"].type is NodeType.METHOD
+    assert nodes["shapes.py::Shape.area"].name == "area"
+    assert nodes["shapes.py::describe"].type is NodeType.FUNCTION
+    assert nodes["pkg/util.py::DEFAULT"].type is NodeType.VARIABLE
+    assert nodes["shapes.py::Shape"].line_start == 4
+    assert nodes["shapes.py::Shape"].line_end == 12
+    assert not any("notes.txt::" in node_id for node_id in nodes)
+
+
+def test_symbols_are_declared_by_their_parent() -> None:
+    generator = GraphGenerator(PYTHON_ASSETS)
+    generator.run()
+
+    declares = {
+        (edge.source, edge.target)
+        for edge in generator.graph.edges
+        if edge.type is EntityRelationshipType.DECLARES
+    }
+    assert ("shapes.py", "shapes.py::Shape") in declares
+    assert ("shapes.py::Shape", "shapes.py::Shape.Style") in declares
+    assert ("shapes.py::Shape.Style", "shapes.py::Shape.Style.color") in declares
+    assert ("pkg/util.py", "pkg/util.py::clamp") in declares
+
+
+def test_graph_with_symbols_is_valid() -> None:
+    generator = GraphGenerator(PYTHON_ASSETS)
+    generator.run()
+
+    assert generator.validate().is_valid
+
+
+def symbol_ids(symbol_depth: int | None) -> set[str]:
+    generator = GraphGenerator(PYTHON_ASSETS, symbol_depth=symbol_depth)
+    generator.run()
+    return {node.id for node in generator.graph.nodes if "::" in node.id}
+
+
+def test_symbol_depth_zero_adds_no_symbols() -> None:
+    assert symbol_ids(0) == set()
+
+
+def test_symbol_depth_one_adds_top_level_symbols_only() -> None:
+    assert symbol_ids(1) == {
+        "shapes.py::SIDES",
+        "shapes.py::Shape",
+        "shapes.py::describe",
+        "pkg/util.py::DEFAULT",
+        "pkg/util.py::clamp",
+    }
+
+
+def test_symbol_depth_two_adds_class_members() -> None:
+    ids = symbol_ids(2)
+
+    assert "shapes.py::Shape.area" in ids
+    assert "shapes.py::Shape.Style" in ids
+    assert "shapes.py::Shape.Style.color" not in ids
+
+
+def test_symbol_depth_limit_keeps_graph_valid() -> None:
+    generator = GraphGenerator(PYTHON_ASSETS, symbol_depth=2)
+    generator.run()
+
+    assert generator.validate().is_valid
+
+
+@pytest.fixture
+def broken_python_tree(tmp_path: Path) -> Path:
+    (tmp_path / "ok.py").write_text("X = 1\n", encoding="utf-8")
+    (tmp_path / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_unparseable_python_file_raises_by_default(broken_python_tree: Path) -> None:
+    with pytest.raises(SourceParseError, match="broken.py"):
+        GraphGenerator(broken_python_tree).run()
+
+
+def test_unparseable_python_file_is_skipped_when_silenced(
+    broken_python_tree: Path,
+) -> None:
+    generator = GraphGenerator(broken_python_tree, silence_read_failure=True)
+    generator.run()
+
+    assert node_ids(generator) == {".", "broken.py", "ok.py", "ok.py::X"}
+
+
+def test_symbol_depth_zero_ignores_unparseable_files(broken_python_tree: Path) -> None:
+    generator = GraphGenerator(broken_python_tree, symbol_depth=0)
+    generator.run()
+
+    assert node_ids(generator) == {".", "broken.py", "ok.py"}

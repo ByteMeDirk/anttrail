@@ -12,6 +12,7 @@ from anttrail.graph import (
     DEFAULT_SCHEMA_VERSION,
     GraphGenerator,
 )
+from anttrail.python_parser import SourceParseError
 
 DISTRIBUTION_NAME = "anttrail"
 
@@ -80,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--silence-read-failure",
         action="store_true",
-        help="Skip directories that cannot be read instead of failing.",
+        help="Skip directories and Python files that cannot be read instead of failing.",
     )
     parser.add_argument(
         "--silence-write-failure",
@@ -124,7 +125,7 @@ def main(argv: list[str] | None = None) -> None:
             graph_generator.write_file(args.output)
         else:
             print(graph_generator.graph.model_dump_json())
-    except (OSError, UnsupportedWriteFormatError) as error:
+    except (OSError, SourceParseError, UnsupportedWriteFormatError) as error:
         raise SystemExit(f"anttrail: error: {error}") from error
 
 

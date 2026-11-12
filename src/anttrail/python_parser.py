@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from anttrail.models import NodeType
 
 
+class SourceParseError(Exception):
+    """Raised when a Python file cannot be read or parsed."""
+
+
 @dataclass(frozen=True, slots=True)
 class Symbol:
     """A class, function, method or variable declared in a Python file."""

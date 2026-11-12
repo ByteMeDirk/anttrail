@@ -15,6 +15,7 @@ from anttrail.models import (
     GraphIntegrity,
     NodeType,
 )
+from anttrail.python_parser import SourceParseError, parse_python
 
 DEFAULT_SCHEMA_VERSION = "<unset>"
 PARENT_EDGE_TYPES = frozenset(
@@ -40,6 +41,7 @@ class GraphGenerator:
         directory_path: Path,
         schema_version: str = DEFAULT_SCHEMA_VERSION,
         ignored_directories: frozenset[str] = DEFAULT_IGNORED_DIRECTORIES,
+        symbol_depth: int | None = None,
         silence_read_failure: bool = False,
         silence_write_failure: bool = False,
     ):
@@ -51,11 +53,15 @@ class GraphGenerator:
             directory_path: The directory to traverse.
             schema_version: The schema version stamped onto the graph.
             ignored_directories: Names of directories to leave out of the graph.
-            silence_read_failure: Skip, rather than raise on, unreadable directories.
+            symbol_depth: Levels of Python symbols to add below each file. None means
+                no limit and 0 adds none.
+            silence_read_failure: Skip, rather than raise on, unreadable directories
+                and Python files that cannot be parsed.
             silence_write_failure: Skip, rather than raise on, unsupported output formats.
         """
         self.root_path: Path = directory_path
         self.ignored_directories: frozenset[str] = ignored_directories
+        self.symbol_depth: int | None = symbol_depth
         self.silence_read_failure: bool = silence_read_failure
         self.silence_write_failure: bool = silence_write_failure
 
@@ -141,6 +147,34 @@ class GraphGenerator:
             EntityRelationshipType.CONTAINS,
         )
 
+    def _build_symbols(self, file_path: Path) -> None:
+        """
+        Add the classes, functions, methods and variables declared in a Python file.
+
+        Raises:
+            SourceParseError: If the file cannot be parsed and read failures are
+                not silenced.
+        """
+        try:
+            symbols = parse_python(file_path.read_bytes(), self.symbol_depth)
+        except (OSError, SyntaxError, ValueError) as error:
+            if self.silence_read_failure:
+                return
+            raise SourceParseError(f"{file_path}: {error}") from error
+
+        file_id = self._canonical_id(file_path)
+        for symbol in symbols:
+            parent_id = f"{file_id}::{symbol.parent}" if symbol.parent else file_id
+            node = BaseNode(
+                id=f"{file_id}::{symbol.qualified_name}",
+                path=file_path,
+                name=symbol.qualified_name.rsplit(".", 1)[-1],
+                type=symbol.kind,
+                line_start=symbol.line_start,
+                line_end=symbol.line_end,
+            )
+            self._add_child(node, parent_id, EntityRelationshipType.DECLARES)
+
     def _raise_unless_silenced(self, error: OSError) -> None:
         """Handle a directory that could not be listed during traversal."""
         if not self.silence_read_failure:
@@ -152,6 +186,8 @@ class GraphGenerator:
 
         Raises:
             OSError: If a directory cannot be read and read failures are not silenced.
+            SourceParseError: If a Python file cannot be parsed and read failures
+                are not silenced.
         """
         for current, directory_names, file_names in os.walk(
             self.root_path, onerror=self._raise_unless_silenced
@@ -164,7 +200,10 @@ class GraphGenerator:
             for name in directory_names:
                 self._build_node(current_path / name, NodeType.DIRECTORY)
             for name in sorted(file_names):
-                self._build_node(current_path / name, NodeType.FILE)
+                file_path = current_path / name
+                self._build_node(file_path, NodeType.FILE)
+                if file_path.suffix == ".py" and self.symbol_depth != 0:
+                    self._build_symbols(file_path)
 
     def validate(self) -> GraphIntegrity:
         """
