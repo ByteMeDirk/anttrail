@@ -4,6 +4,10 @@ from enum import Enum
 from pathlib import Path
 
 
+class UnsupportedWriteFormatError(ValueError):
+    """Raised when the output file extension has no writer."""
+
+
 class SupportedWriteFormats(Enum):
     """Formats that the Graph Model can output."""
 

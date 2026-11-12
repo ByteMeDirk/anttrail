@@ -6,7 +6,7 @@ import argparse
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from anttrail.graph import GraphGenerator
+from anttrail.graph import DEFAULT_SCHEMA_VERSION, GraphGenerator
 
 DISTRIBUTION_NAME = "anttrail"
 
@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--schema-version",
         "-s",
-        default="<unset>",
+        default=DEFAULT_SCHEMA_VERSION,
         metavar="VERSION",
         help="Schema version to use for graph generation.",
     )
@@ -82,37 +82,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ignore write failures, such as unsupported output formats.",
     )
-    parser.add_argument(
-        "--verbose",
-        action="count",
-        default=0,
-        help="Increase verbosity.",
-    )
 
     return parser
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Main entry point."""
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(argv)
 
     graph_generator = GraphGenerator(
         directory_path=args.directory,
         schema_version=args.schema_version,
-        output_path=args.output,
-        silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )
-
     graph_generator.run()
 
     if args.validate:
-        graph_generator.validate()
-        if graph_generator.graph_integrity:
-            print(graph_generator.graph_integrity.model_dump_json())
+        print(graph_generator.validate().model_dump_json())
 
     if args.output:
-        graph_generator.write_file(Path(args.output))
+        graph_generator.write_file(args.output)
     else:
         print(graph_generator.graph.model_dump_json())
 

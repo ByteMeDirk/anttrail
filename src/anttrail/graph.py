@@ -1,14 +1,11 @@
 """The main Base GraphGenerator"""
 
-import json
 from collections import defaultdict, deque
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 
-from anttrail.files import SupportedWriteFormats
+from anttrail.files import SupportedWriteFormats, UnsupportedWriteFormatError
 from anttrail.models import (
     BaseGraph,
     BaseNode,
@@ -18,34 +15,30 @@ from anttrail.models import (
     GraphIntegrity,
 )
 
+DEFAULT_SCHEMA_VERSION = "<unset>"
+
 
 class GraphGenerator:
     def __init__(
         self,
         directory_path: Path,
-        output_path: Path | None = None,
-        schema_version: str = "<unset>",
-        **kwargs,
+        schema_version: str = DEFAULT_SCHEMA_VERSION,
+        silence_write_failure: bool = False,
     ):
         """
-        GraphGenerator is the substance object of anttrail.
-        The objective is to build a concise graph from a provided directory.
-        This graph can then be used for other purposes, i.e. an "anttrail" to traverse a directory.
+        GraphGenerator builds a concise containment graph from a directory.
+        The graph can then be used as an "anttrail" to traverse that directory.
 
         Args:
-            directory_path (Path): The directory to traverse.
-            output_path (Path | None): The path to save the graph to.
-            schema_version (str, optional): The schema version to use. Defaults to "<unset>".
-            kwargs (dict[str, Any], optional): Additional keyword arguments.
+            directory_path: The directory to traverse.
+            schema_version: The schema version stamped onto the graph.
+            silence_write_failure: Skip, rather than raise on, unsupported output formats.
         """
         self.root_path: Path = directory_path
-        self.output_path: Path | None = output_path
-        self.artefacts: list[Path] = [path for path in self.root_path.rglob("*")]
-        self.schema_version: str = schema_version
+        self.silence_write_failure: bool = silence_write_failure
 
         self.graph: BaseGraph = BaseGraph(
-            schema_version=self.schema_version,
-            created_at=datetime.now(),
+            schema_version=schema_version,
             nodes=[
                 BaseNode(
                     id=".",
@@ -54,38 +47,34 @@ class GraphGenerator:
                     type=NodeType.DIRECTORY,
                 )
             ],
-            edges=[],
         )
-        self.graph_integrity: GraphIntegrity | None = None
-
-        self.kwargs: dict[str, Any] = kwargs
 
     def write_file(self, file_path: Path) -> None:
         """
-        Write a file.
+        Write the graph to a JSON or YAML file, chosen by the file extension.
 
         Args:
-            file_path (Path): The file to write.
+            file_path: The file to write.
 
-        Returns:
-            None
+        Raises:
+            UnsupportedWriteFormatError: If the extension is not supported and
+                write failures are not silenced.
         """
         if SupportedWriteFormats.JSON.check(file_path):
             file_path.write_text(self.graph.model_dump_json(), encoding="utf-8")
         elif SupportedWriteFormats.YAML.check(file_path):
             file_path.write_text(
                 yaml.safe_dump(
-                    json.loads(self.graph.model_dump_json()),
+                    self.graph.model_dump(mode="json"),
                     sort_keys=False,
                     allow_unicode=True,
                 ),
                 encoding="utf-8",
             )
-        else:
-            if not self.kwargs.get("silence_write_failure"):
-                raise ValueError(
-                    f"Unsupported file format during write: `{str(file_path)}`."
-                )
+        elif not self.silence_write_failure:
+            raise UnsupportedWriteFormatError(
+                f"Unsupported output format: `{file_path}`."
+            )
 
     def _canonical_id(self, path: Path) -> str:
         """
@@ -164,18 +153,16 @@ class GraphGenerator:
         Returns:
             None
         """
-        for artefact in self.artefacts:
+        for artefact in self.root_path.rglob("*"):
             self._build_nodes(artefact)
             self._build_edges(artefact)
 
-    def validate(self) -> None:
+    def validate(self) -> GraphIntegrity:
         """
-        Once the graph has been generated, one can validate it.
-
-        Note: The algorithm here is a bit cognitively intense so will revise it later.
+        Check referential integrity, connectivity and containment of the graph.
 
         Returns:
-            None
+            GraphIntegrity: The validation report.
         """
         node_ids = {node.id for node in self.graph.nodes}
 
@@ -249,9 +236,8 @@ class GraphGenerator:
             and not invalid_containment_nodes
         )
 
-        self.graph_integrity = GraphIntegrity(
+        return GraphIntegrity(
             is_valid=is_valid,
-            # if True, this is not a bad thing for a containment tree, that's the type of graph we are generating
             is_weakly_connected=is_weakly_connected,
             missing_edge_endpoints=missing_edge_endpoints,
             isolated_node_ids=isolated_node_ids,
@@ -261,8 +247,7 @@ class GraphGenerator:
 
     def run(self) -> BaseGraph:
         """
-        Run the graph.
-        If BaseGraph extends, this will need to be updated to extend the Graph Object.
+        Traverse the directory and populate the graph.
 
         Returns:
             BaseGraph
