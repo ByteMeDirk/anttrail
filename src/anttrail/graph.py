@@ -107,22 +107,35 @@ class GraphGenerator:
         """
         return path.relative_to(self.root_path).as_posix() or "."
 
-    def _build_node(self, artefact: Path, node_type: NodeType) -> None:
-        """Add a node and its containment edge to the graph."""
-        node_id = self._canonical_id(artefact)
-        parent_id = self._canonical_id(artefact.parent)
-        relationship_type = EntityRelationshipType.CONTAINS
-
-        self.graph.add_node(
-            BaseNode(id=node_id, path=artefact, name=artefact.name, type=node_type)
-        )
+    def _add_child(
+        self,
+        node: BaseNode,
+        parent_id: str,
+        relationship_type: EntityRelationshipType,
+    ) -> None:
+        """Add a node to the graph, linked to its parent by one edge."""
+        self.graph.add_node(node)
         self.graph.add_edge(
             BaseEdge(
-                id=f"{parent_id}|{relationship_type.value}|{node_id}",
+                id=f"{parent_id}|{relationship_type.value}|{node.id}",
                 source=parent_id,
                 type=relationship_type,
-                target=node_id,
+                target=node.id,
             )
+        )
+
+    def _build_node(self, artefact: Path, node_type: NodeType) -> None:
+        """Add a directory or file node, contained by its parent directory."""
+        node = BaseNode(
+            id=self._canonical_id(artefact),
+            path=artefact,
+            name=artefact.name,
+            type=node_type,
+        )
+        self._add_child(
+            node,
+            self._canonical_id(artefact.parent),
+            EntityRelationshipType.CONTAINS,
         )
 
     def _raise_unless_silenced(self, error: OSError) -> None:
