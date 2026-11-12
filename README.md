@@ -45,8 +45,8 @@ anttrail ./docs > graph.json
 
 ### Write graph output to a file
 
-Use `--output` (or `-o`) to write the graph to a file. Where supported, the filename extension determines the output
-format:
+Use `--output` (or `-o`) to write the graph to a file. The filename extension determines the output format, either
+`.json` or `.yaml`:
 
 ```bash
 anttrail ./docs --output graph.json
@@ -79,23 +79,24 @@ anttrail ./docs -s 1.0 -o graph.json
 
 ### Handle unsupported files or output formats
 
-By default, read and write failures are surfaced. Use the silence flags only when partial output is acceptable:
+By default, AntTrail stops with a one-line error when a directory cannot be read or the output format is unsupported.
+Use the silence flags only when partial output is acceptable:
 
 ```bash
-# Continue crawling when individual files cannot be read or are unsupported.
+# Continue crawling when a directory cannot be read.
 anttrail ./docs --silence-read-failure --output graph.json
 
 # Do not fail the command when the selected output format cannot be written.
 anttrail ./docs --silence-write-failure --output graph.unsupported
 ```
 
-### Increase verbosity
+### Skip or include directories
 
-Repeat `--verbose` to request more verbose command output:
+AntTrail skips `.git`, `.venv`, `venv`, `__pycache__`, `node_modules`, `.pytest_cache`, `.mypy_cache`, and `.ruff_cache`
+by default. Pass `--no-ignore` to include them:
 
 ```bash
-anttrail ./docs --verbose --output graph.json
-anttrail ./docs --verbose --verbose --output graph.json
+anttrail . --no-ignore
 ```
 
 ### Command reference
@@ -110,9 +111,9 @@ anttrail [OPTIONS] DIRECTORY
 | `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                          |
 | `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console |
 | `--validate`               | -            | Validate the generated graph before output                               |
-| `--silence-read-failure`   | -            | Ignore individual file-read failures, including unsupported formats      |
-| `--silence-write-failure`  | -            | Ignore failures caused by unsupported output formats                     |
-| `--verbose`                | -            | Increase verbosity; repeat the option for additional verbosity           |
+| `--silence-read-failure`   | -            | Skip directories that cannot be read instead of failing                  |
+| `--silence-write-failure`  | -            | Do not fail when the output format is unsupported                        |
+| `--no-ignore`              | -            | Include the directories that are skipped by default                      |
 
 Run `anttrail --help` to view the complete command-line help for the installed version.
 
@@ -125,7 +126,8 @@ AntTrail currently:
 - Creates directed `CONTAINS` relationships for immediate parent-child filesystem relationships.
 - Uses normalized root-relative IDs for stable graph traversal.
 - Validates containment relationships, node references, root reachability, and weak graph connectivity.
-- Exports a structured graph model and a Cypher-like diagnostic representation.
+- Exports the graph as JSON or YAML.
+- Skips common non-source directories such as `.git` and virtual environments.
 
 At present, AntTrail models filesystem structure. It does not yet extract semantic document content.
 
