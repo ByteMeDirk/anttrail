@@ -1,4 +1,5 @@
 """File-based handlers for Graph Models."""
+
 import re
 from enum import Enum
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 
 class SupportedReadFormats(Enum):
     """Formats that the Graph Model can consume."""
+
     MARKDOWN = {".md", ".markdown"}
 
     def check(self, path: Path) -> bool:
@@ -20,6 +22,7 @@ class SupportedReadFormats(Enum):
 
 class SupportedWriteFormats(Enum):
     """Formats that the Graph Model can output."""
+
     JSON = {".json"}
     YAML = {".yaml"}
     TEXT = {".txt"}

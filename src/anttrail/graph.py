@@ -1,4 +1,5 @@
 """The main Base GraphGenerator"""
+
 import json
 from collections import defaultdict, deque
 from datetime import datetime
@@ -8,12 +9,24 @@ from typing import Any
 import yaml
 
 from anttrail.files import SupportedReadFormats, SupportedWriteFormats
-from anttrail.models import BaseGraph, BaseNode, NodeType, EntityRelationshipType, BaseEdge, GraphIntegrity
+from anttrail.models import (
+    BaseGraph,
+    BaseNode,
+    NodeType,
+    EntityRelationshipType,
+    BaseEdge,
+    GraphIntegrity,
+)
 
 
 class GraphGenerator:
-    def __init__(self, directory_path: Path, output_path: Path | None = None, schema_version: str = "<unset>",
-                 **kwargs):
+    def __init__(
+        self,
+        directory_path: Path,
+        output_path: Path | None = None,
+        schema_version: str = "<unset>",
+        **kwargs,
+    ):
         """
         GraphGenerator is the substance object of anttrail.
         The objective is to build a concise graph from a provided directory.
@@ -27,20 +40,20 @@ class GraphGenerator:
         """
         self.root_path: Path = directory_path
         self.output_path: Path | None = output_path
-        self.artefacts: list[Path] = [
-            path for path in self.root_path.rglob("*")
-        ]
+        self.artefacts: list[Path] = [path for path in self.root_path.rglob("*")]
         self.schema_version: str = schema_version
 
         self.graph: BaseGraph = BaseGraph(
             schema_version=self.schema_version,
             created_at=datetime.now(),
-            nodes=[BaseNode(
-                id=".",
-                path=self.root_path,
-                name=self.root_path.name,
-                type=NodeType.DIRECTORY,
-            )],
+            nodes=[
+                BaseNode(
+                    id=".",
+                    path=self.root_path,
+                    name=self.root_path.name,
+                    type=NodeType.DIRECTORY,
+                )
+            ],
             edges=[],
         )
         self.graph_integrity: GraphIntegrity | None = None
@@ -83,11 +96,13 @@ class GraphGenerator:
                     sort_keys=False,
                     allow_unicode=True,
                 ),
-                encoding="utf-8"
+                encoding="utf-8",
             )
         else:
             if not self.kwargs.get("silence_write_failure"):
-                raise ValueError(f"Unsupported file format during write: `{str(file_path)}`.")
+                raise ValueError(
+                    f"Unsupported file format during write: `{str(file_path)}`."
+                )
 
     def _canonical_id(self, path: Path) -> str:
         """
@@ -134,7 +149,7 @@ class GraphGenerator:
             id=self._canonical_id(artefact),
             path=artefact,
             name=artefact.name,
-            type=node_type
+            type=node_type,
         )
         self.graph.add_node(node)
 
@@ -207,9 +222,7 @@ class GraphGenerator:
                 adjacency[edge.target].add(edge.source)
 
         isolated_node_ids = sorted(
-            node_ids
-            for node_id in node_ids
-            if not adjacency[node_id]
+            node_ids for node_id in node_ids if not adjacency[node_id]
         )
 
         # traverse all node_ids to check their status
@@ -229,14 +242,11 @@ class GraphGenerator:
         unreachable_from_root = sorted(node_ids - visited)
 
         # Check CONTAINS status, this will need to be extended eventually
-        incoming_contains: dict[str, int] = {
-            node_id: 0
-            for node_id in node_ids
-        }
+        incoming_contains: dict[str, int] = {node_id: 0 for node_id in node_ids}
         for edge in self.graph.edges:
             if (
-                    edge.type == EntityRelationshipType.CONTAINS
-                    and edge.target in incoming_contains
+                edge.type == EntityRelationshipType.CONTAINS
+                and edge.target in incoming_contains
             ):
                 incoming_contains[edge.target] += 1
 
@@ -246,15 +256,14 @@ class GraphGenerator:
             if node_id != self.graph.root_id and incoming_count != 1
         )
 
-        is_weakly_connected = (
-                not missing_edge_endpoints
-                and len(visited) == len(node_ids)
+        is_weakly_connected = not missing_edge_endpoints and len(visited) == len(
+            node_ids
         )
 
         is_valid = (
-                is_weakly_connected
-                and not isolated_node_ids
-                and not invalid_containment_nodes
+            is_weakly_connected
+            and not isolated_node_ids
+            and not invalid_containment_nodes
         )
 
         self.graph_integrity = GraphIntegrity(
