@@ -3,11 +3,28 @@ name = "anttrail"
 version = "0.1.0"
 description = "AntTrail is a lightweight Python library for building structured, queryable repository graphs. It helps agents and other software systems retrieve object context without reading or scraping an entire repository."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Dirk Steynberg" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
 ]
+
+[project.urls]
+Repository = "https://github.com/ByteMeDirk/anttrail"
+Issues = "https://github.com/ByteMeDirk/anttrail/issues"
 
 [project.scripts]
 anttrail = "anttrail.cli:main"
