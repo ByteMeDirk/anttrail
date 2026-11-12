@@ -36,7 +36,7 @@ Pass the directory you want to crawl as the required positional argument:
 anttrail ./docs
 ```
 
-When no output path is supplied, Anttrail writes the generated graph as JSON to standard output. Redirect it to a file
+When no output path is supplied, AntTrail writes the generated graph as JSON to standard output. Redirect it to a file
 if needed:
 
 ```bash
@@ -52,7 +52,7 @@ Use `--output` (or `-o`) to write the graph to a file. The filename extension de
 anttrail ./docs --output graph.json
 ```
 
-The directory argument must already exist. Anttrail resolves it to an absolute path before crawling.
+The directory argument must already exist. AntTrail resolves it to an absolute path before crawling.
 
 ### Validate the graph
 
@@ -99,6 +99,8 @@ by default. Pass `--no-ignore` to include them:
 anttrail . --no-ignore
 ```
 
+For the structure of the output and a full example, see [Graph format](docs/graph-format.md).
+
 ### Command reference
 
 ```text
@@ -107,7 +109,7 @@ anttrail [OPTIONS] DIRECTORY
 
 | Option                     | Short form   | Purpose                                                                  |
 |----------------------------|--------------|--------------------------------------------------------------------------|
-| `--version`                | `-v`         | Show the installed Anttrail version and exit                             |
+| `--version`                | `-v`         | Show the installed AntTrail version and exit                             |
 | `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                          |
 | `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console |
 | `--validate`               | -            | Validate the generated graph before output                               |
@@ -116,6 +118,13 @@ anttrail [OPTIONS] DIRECTORY
 | `--no-ignore`              | -            | Include the directories that are skipped by default                      |
 
 Run `anttrail --help` to view the complete command-line help for the installed version.
+
+### Troubleshooting
+
+If `anttrail --version` prints `0+unknown`, the package is running from source without being installed. Run `uv sync`
+to install it with its metadata.
+
+See the [changelog](CHANGELOG.md) for changes between versions.
 
 ## Current capabilities
 
