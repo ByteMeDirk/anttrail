@@ -1,4 +1,5 @@
 """Terminal interface for anttrail."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,9 +24,7 @@ def existing_directory(value: str) -> Path:
     path = Path(value).expanduser()
 
     if not path.is_dir():
-        raise argparse.ArgumentTypeError(
-            f"Directory {value} does not exist."
-        )
+        raise argparse.ArgumentTypeError(f"Directory {value} does not exist.")
     return path.resolve()
 
 
@@ -38,7 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--version", "-v",
+        "--version",
+        "-v",
         action="version",
         version=f"%(prog)s {get_version()}",
         help="Show version information and exit.",
@@ -50,12 +50,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory to be crawled for graph generation.",
     )
     parser.add_argument(
-        "--schema-version", "-s",
+        "--schema-version",
+        "-s",
+        default="<unset>",
         metavar="VERSION",
         help="Schema version to use for graph generation.",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         metavar="PATH",
         help=(
@@ -67,9 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate",
         action="store_true",
-        help=(
-            "If set, the graph is validated before writing the graph."
-        )
+        help="If set, the graph is validated before writing the graph.",
     )
     parser.add_argument(
         "--silence-read-failure",
