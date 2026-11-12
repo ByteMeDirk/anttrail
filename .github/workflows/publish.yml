@@ -1,0 +1,65 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a tag on main
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::Release is not tied to a tag."
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $TAG_NAME is not on main. Refusing to publish."
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Require the tag to match the package version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          package_version="$(uv version --short)"
+          if [ "${TAG_NAME#v}" != "$package_version" ]; then
+            echo "::error::Tag $TAG_NAME does not match pyproject.toml version $package_version."
+            exit 1
+          fi
+
+      - run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
