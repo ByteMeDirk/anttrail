@@ -36,7 +36,7 @@ Pass the directory you want to crawl as the required positional argument:
 anttrail ./docs
 ```
 
-When no output path is supplied, Anttrail writes the generated graph as JSON to standard output. Redirect it to a file
+When no output path is supplied, AntTrail writes the generated graph as JSON to standard output. Redirect it to a file
 if needed:
 
 ```bash
@@ -45,14 +45,14 @@ anttrail ./docs > graph.json
 
 ### Write graph output to a file
 
-Use `--output` (or `-o`) to write the graph to a file. Where supported, the filename extension determines the output
-format:
+Use `--output` (or `-o`) to write the graph to a file. The filename extension determines the output format, either
+`.json` or `.yaml`:
 
 ```bash
 anttrail ./docs --output graph.json
 ```
 
-The directory argument must already exist. Anttrail resolves it to an absolute path before crawling.
+The directory argument must already exist. AntTrail resolves it to an absolute path before crawling.
 
 ### Validate the graph
 
@@ -79,24 +79,46 @@ anttrail ./docs -s 1.0 -o graph.json
 
 ### Handle unsupported files or output formats
 
-By default, read and write failures are surfaced. Use the silence flags only when partial output is acceptable:
+By default, AntTrail stops with a one-line error when a directory cannot be read or the output format is unsupported.
+Use the silence flags only when partial output is acceptable:
 
 ```bash
-# Continue crawling when individual files cannot be read or are unsupported.
+# Continue crawling when a directory cannot be read.
 anttrail ./docs --silence-read-failure --output graph.json
 
 # Do not fail the command when the selected output format cannot be written.
 anttrail ./docs --silence-write-failure --output graph.unsupported
 ```
 
-### Increase verbosity
+### Include Python symbols
 
-Repeat `--verbose` to request more verbose command output:
+AntTrail adds a node for each class, function, method, and variable declared at the top level of a `.py` file or of a
+class. It does not read function bodies or conditional blocks. Use `--symbol-depth` to limit how many levels it adds:
 
 ```bash
-anttrail ./docs --verbose --output graph.json
-anttrail ./docs --verbose --verbose --output graph.json
+# Top-level classes, functions, and variables only.
+anttrail ./src --symbol-depth 1
+
+# Also add class members.
+anttrail ./src --symbol-depth 2
+
+# Files and directories only.
+anttrail ./src --symbol-depth 0
 ```
+
+Without the option, AntTrail adds every level. If a Python file has a syntax error or cannot be read, AntTrail stops with
+a one-line error. Add `--silence-read-failure` to keep the file's node and skip its symbols instead.
+
+### Skip or include directories
+
+AntTrail skips `.git`, `.venv`, `venv`, `__pycache__`, `node_modules`, `.pytest_cache`, `.mypy_cache`, and `.ruff_cache`
+by default. Pass `--no-ignore` to include them:
+
+```bash
+anttrail . --no-ignore
+```
+
+For the structure of the output and a full example, see [Graph format](docs/graph-format.md).
 
 ### Command reference
 
@@ -106,15 +128,23 @@ anttrail [OPTIONS] DIRECTORY
 
 | Option                     | Short form   | Purpose                                                                  |
 |----------------------------|--------------|--------------------------------------------------------------------------|
-| `--version`                | `-v`         | Show the installed Anttrail version and exit                             |
+| `--version`                | `-v`         | Show the installed AntTrail version and exit                             |
 | `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                          |
 | `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console |
 | `--validate`               | -            | Validate the generated graph before output                               |
-| `--silence-read-failure`   | -            | Ignore individual file-read failures, including unsupported formats      |
-| `--silence-write-failure`  | -            | Ignore failures caused by unsupported output formats                     |
-| `--verbose`                | -            | Increase verbosity; repeat the option for additional verbosity           |
+| `--symbol-depth N`         | -            | Limit how many levels of Python symbols are added; `0` adds none         |
+| `--silence-read-failure`   | -            | Skip directories and Python files that cannot be read instead of failing |
+| `--silence-write-failure`  | -            | Do not fail when the output format is unsupported                        |
+| `--no-ignore`              | -            | Include the directories that are skipped by default                      |
 
 Run `anttrail --help` to view the complete command-line help for the installed version.
+
+### Troubleshooting
+
+If `anttrail --version` prints `0+unknown`, the package is running from source without being installed. Run `uv sync`
+to install it with its metadata.
+
+See the [changelog](CHANGELOG.md) for changes between versions.
 
 ## Current capabilities
 
@@ -122,12 +152,16 @@ AntTrail currently:
 
 - Traverses a configured repository or directory root.
 - Creates graph nodes for directories and files.
+- Creates graph nodes for the classes, functions, methods, and variables declared in Python files.
 - Creates directed `CONTAINS` relationships for immediate parent-child filesystem relationships.
+- Creates directed `DECLARES` relationships from a file or class to the symbols it declares.
 - Uses normalized root-relative IDs for stable graph traversal.
 - Validates containment relationships, node references, root reachability, and weak graph connectivity.
-- Exports a structured graph model and a Cypher-like diagnostic representation.
+- Exports the graph as JSON or YAML.
+- Skips common non-source directories such as `.git` and virtual environments.
 
-At present, AntTrail models filesystem structure. It does not yet extract semantic document content.
+AntTrail reads Python files only for the symbols listed above. It does not extract imports, calls, inheritance, or
+instance attributes, and it does not extract content from other file types.
 
 ## Motivation
 
@@ -161,8 +195,4 @@ lifting. I want it to be local-first, lightweight, deterministic, extensible, an
 
 ---
 
-Please note that this is currently a project in its infancy. Part of this endeavor is to produce something original and
-challenging. Therefore, **no agent co-authoring/coding** is used in this repository. Subject material in question is
-sourced from an LLM or the web, but the code in this repo is made by a human, and the goal is to keep it that way.
-
-> It's gonna be ugly at first, but hopefully it gets better :D
+Please note that this is currently a project in its infancy.

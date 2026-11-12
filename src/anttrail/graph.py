@@ -1,93 +1,108 @@
 """The main Base GraphGenerator"""
-import json
+
+import os
 from collections import defaultdict, deque
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 
-from anttrail.files import SupportedReadFormats, SupportedWriteFormats
-from anttrail.models import BaseGraph, BaseNode, NodeType, EntityRelationshipType, BaseEdge, GraphIntegrity
+from anttrail.files import SupportedWriteFormats, UnsupportedWriteFormatError
+from anttrail.models import (
+    BaseEdge,
+    BaseGraph,
+    BaseNode,
+    EntityRelationshipType,
+    GraphIntegrity,
+    NodeType,
+)
+from anttrail.python_parser import SourceParseError, parse_python
+
+DEFAULT_SCHEMA_VERSION = "<unset>"
+PARENT_EDGE_TYPES = frozenset(
+    {EntityRelationshipType.CONTAINS, EntityRelationshipType.DECLARES}
+)
+DEFAULT_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
 
 
 class GraphGenerator:
-    def __init__(self, directory_path: Path, output_path: Path | None = None, schema_version: str = "<unset>",
-                 **kwargs):
+    def __init__(
+        self,
+        directory_path: Path,
+        schema_version: str = DEFAULT_SCHEMA_VERSION,
+        ignored_directories: frozenset[str] = DEFAULT_IGNORED_DIRECTORIES,
+        symbol_depth: int | None = None,
+        silence_read_failure: bool = False,
+        silence_write_failure: bool = False,
+    ):
         """
-        GraphGenerator is the substance object of anttrail.
-        The objective is to build a concise graph from a provided directory.
-        This graph can then be used for other purposes, i.e. an "anttrail" to traverse a directory.
+        GraphGenerator builds a concise containment graph from a directory.
+        The graph can then be used as an "anttrail" to traverse that directory.
 
         Args:
-            directory_path (Path): The directory to traverse.
-            output_path (Path | None): The path to save the graph to.
-            schema_version (str, optional): The schema version to use. Defaults to "<unset>".
-            kwargs (dict[str, Any], optional): Additional keyword arguments.
+            directory_path: The directory to traverse.
+            schema_version: The schema version stamped onto the graph.
+            ignored_directories: Names of directories to leave out of the graph.
+            symbol_depth: Levels of Python symbols to add below each file. None means
+                no limit and 0 adds none.
+            silence_read_failure: Skip, rather than raise on, unreadable directories
+                and Python files that cannot be parsed.
+            silence_write_failure: Skip, rather than raise on, unsupported output formats.
         """
         self.root_path: Path = directory_path
-        self.output_path: Path | None = output_path
-        self.artefacts: list[Path] = [
-            path for path in self.root_path.rglob("*")
-        ]
-        self.schema_version: str = schema_version
+        self.ignored_directories: frozenset[str] = ignored_directories
+        self.symbol_depth: int | None = symbol_depth
+        self.silence_read_failure: bool = silence_read_failure
+        self.silence_write_failure: bool = silence_write_failure
 
         self.graph: BaseGraph = BaseGraph(
-            schema_version=self.schema_version,
-            created_at=datetime.now(),
-            nodes=[BaseNode(
-                id=".",
-                path=self.root_path,
-                name=self.root_path.name,
-                type=NodeType.DIRECTORY,
-            )],
-            edges=[],
+            schema_version=schema_version,
+            nodes=[
+                BaseNode(
+                    id=".",
+                    path=self.root_path,
+                    name=self.root_path.name,
+                    type=NodeType.DIRECTORY,
+                )
+            ],
         )
-        self.graph_integrity: GraphIntegrity | None = None
-
-        self.kwargs: dict[str, Any] = kwargs
-
-    def read_file(self, file_path: Path) -> list:
-        """
-        Read a file into a list.
-
-        Args:
-            file_path (Path): The file to read.
-
-        Returns:
-            list: A list of all lines in the file.
-        """
-        if SupportedReadFormats.supports(file_path):
-            return file_path.read_text(encoding="utf-8").splitlines()
-        else:
-            if not self.kwargs.get("silence_read_failure"):
-                raise ValueError("Unsupported file format during read: %s", file_path)
-            return []
 
     def write_file(self, file_path: Path) -> None:
         """
-        Write a file.
+        Write the graph to a JSON or YAML file, chosen by the file extension.
 
         Args:
-            file_path (Path): The file to write.
+            file_path: The file to write.
 
-        Returns:
-            None
+        Raises:
+            UnsupportedWriteFormatError: If the extension is not supported and
+                write failures are not silenced.
         """
         if SupportedWriteFormats.JSON.check(file_path):
             file_path.write_text(self.graph.model_dump_json(), encoding="utf-8")
         elif SupportedWriteFormats.YAML.check(file_path):
             file_path.write_text(
                 yaml.safe_dump(
-                    json.loads(self.graph.model_dump_json()),
+                    self.graph.model_dump(mode="json"),
                     sort_keys=False,
                     allow_unicode=True,
                 ),
-                encoding="utf-8"
+                encoding="utf-8",
             )
-        else:
-            if not self.kwargs.get("silence_write_failure"):
-                raise ValueError(f"Unsupported file format during write: `{str(file_path)}`.")
+        elif not self.silence_write_failure:
+            raise UnsupportedWriteFormatError(
+                f"Unsupported output format: `{file_path}`."
+            )
 
     def _canonical_id(self, path: Path) -> str:
         """
@@ -101,83 +116,101 @@ class GraphGenerator:
         """
         return path.relative_to(self.root_path).as_posix() or "."
 
-    def _containment_edge(self, path: Path) -> str:
-        """
-        Return the edge id of a path.
+    def _add_child(
+        self,
+        node: BaseNode,
+        parent_id: str,
+        relationship_type: EntityRelationshipType,
+    ) -> None:
+        """Add a node to the graph, linked to its parent by one edge."""
+        self.graph.add_node(node)
+        self.graph.add_edge(
+            BaseEdge(
+                id=f"{parent_id}|{relationship_type.value}|{node.id}",
+                source=parent_id,
+                type=relationship_type,
+                target=node.id,
+            )
+        )
 
-        Args:
-            path (Path): The relevant path to determine its edge id.
-
-        Returns:
-            str: The edge id.
-        """
-        return self._canonical_id(path.parent)
-
-    def _build_nodes(self, artefact: Path) -> None:
-        """
-        Add nodes to the graph.
-
-        Args:
-            artefact: Path to the artefact.
-
-        Returns:
-            None
-        """
-        if artefact.is_dir():
-            node_type = NodeType.DIRECTORY
-        elif artefact.is_file():
-            node_type = NodeType.FILE
-        else:
-            raise ValueError("Unsupported artefact type: %s", artefact)
-
+    def _build_node(self, artefact: Path, node_type: NodeType) -> None:
+        """Add a directory or file node, contained by its parent directory."""
         node = BaseNode(
             id=self._canonical_id(artefact),
             path=artefact,
             name=artefact.name,
-            type=node_type
+            type=node_type,
         )
-        self.graph.add_node(node)
-
-    def _build_edges(self, artefact: Path) -> None:
-        """
-        Add edges to the graph.
-
-        Returns:
-            None
-        """
-        source = self._containment_edge(artefact)
-        target = self._canonical_id(artefact)
-        relationship_type = EntityRelationshipType.CONTAINS
-
-        edge = BaseEdge(
-            id=f"{source}|{relationship_type.value}|{target}",
-            source=source,
-            type=relationship_type,
-            target=target,
+        self._add_child(
+            node,
+            self._canonical_id(artefact.parent),
+            EntityRelationshipType.CONTAINS,
         )
 
-        self.graph.add_edge(edge)
+    def _build_symbols(self, file_path: Path) -> None:
+        """
+        Add the classes, functions, methods and variables declared in a Python file.
+
+        Raises:
+            SourceParseError: If the file cannot be parsed and read failures are
+                not silenced.
+        """
+        try:
+            symbols = parse_python(file_path.read_bytes(), self.symbol_depth)
+        except (OSError, SyntaxError, ValueError) as error:
+            if self.silence_read_failure:
+                return
+            raise SourceParseError(f"{file_path}: {error}") from error
+
+        file_id = self._canonical_id(file_path)
+        for symbol in symbols:
+            parent_id = f"{file_id}::{symbol.parent}" if symbol.parent else file_id
+            node = BaseNode(
+                id=f"{file_id}::{symbol.qualified_name}",
+                path=file_path,
+                name=symbol.qualified_name.rsplit(".", 1)[-1],
+                type=symbol.kind,
+                line_start=symbol.line_start,
+                line_end=symbol.line_end,
+            )
+            self._add_child(node, parent_id, EntityRelationshipType.DECLARES)
+
+    def _raise_unless_silenced(self, error: OSError) -> None:
+        """Handle a directory that could not be listed during traversal."""
+        if not self.silence_read_failure:
+            raise error
 
     def _traversal(self) -> None:
         """
-        Traverse the graph.
-        Extendable to all build methods.
+        Walk the directory in a stable order, skipping ignored directories.
+
+        Raises:
+            OSError: If a directory cannot be read and read failures are not silenced.
+            SourceParseError: If a Python file cannot be parsed and read failures
+                are not silenced.
+        """
+        for current, directory_names, file_names in os.walk(
+            self.root_path, onerror=self._raise_unless_silenced
+        ):
+            directory_names[:] = sorted(
+                name for name in directory_names if name not in self.ignored_directories
+            )
+            current_path = Path(current)
+
+            for name in directory_names:
+                self._build_node(current_path / name, NodeType.DIRECTORY)
+            for name in sorted(file_names):
+                file_path = current_path / name
+                self._build_node(file_path, NodeType.FILE)
+                if file_path.suffix == ".py" and self.symbol_depth != 0:
+                    self._build_symbols(file_path)
+
+    def validate(self) -> GraphIntegrity:
+        """
+        Check referential integrity, connectivity and containment of the graph.
 
         Returns:
-            None
-        """
-        for artefact in self.artefacts:
-            self._build_nodes(artefact)
-            self._build_edges(artefact)
-
-    def validate(self) -> None:
-        """
-        Once the graph has been generated, one can validate it.
-
-        Note: The algorithm here is a bit cognitively intense so will revise it later.
-
-        Returns:
-            None
+            GraphIntegrity: The validation report.
         """
         node_ids = {node.id for node in self.graph.nodes}
 
@@ -207,9 +240,9 @@ class GraphGenerator:
                 adjacency[edge.target].add(edge.source)
 
         isolated_node_ids = sorted(
-            node_ids
+            node_id
             for node_id in node_ids
-            if not adjacency[node_id]
+            if node_id != self.graph.root_id and not adjacency[node_id]
         )
 
         # traverse all node_ids to check their status
@@ -228,38 +261,31 @@ class GraphGenerator:
 
         unreachable_from_root = sorted(node_ids - visited)
 
-        # Check CONTAINS status, this will need to be extended eventually
-        incoming_contains: dict[str, int] = {
-            node_id: 0
-            for node_id in node_ids
-        }
+        # Every node except the root has exactly one parent, which is either
+        # its directory (CONTAINS) or the file or class that declares it (DECLARES).
+        incoming_parent_edges: dict[str, int] = {node_id: 0 for node_id in node_ids}
         for edge in self.graph.edges:
-            if (
-                    edge.type == EntityRelationshipType.CONTAINS
-                    and edge.target in incoming_contains
-            ):
-                incoming_contains[edge.target] += 1
+            if edge.type in PARENT_EDGE_TYPES and edge.target in incoming_parent_edges:
+                incoming_parent_edges[edge.target] += 1
 
         invalid_containment_nodes = sorted(
             node_id
-            for node_id, incoming_count in incoming_contains.items()
+            for node_id, incoming_count in incoming_parent_edges.items()
             if node_id != self.graph.root_id and incoming_count != 1
         )
 
-        is_weakly_connected = (
-                not missing_edge_endpoints
-                and len(visited) == len(node_ids)
+        is_weakly_connected = not missing_edge_endpoints and len(visited) == len(
+            node_ids
         )
 
         is_valid = (
-                is_weakly_connected
-                and not isolated_node_ids
-                and not invalid_containment_nodes
+            is_weakly_connected
+            and not isolated_node_ids
+            and not invalid_containment_nodes
         )
 
-        self.graph_integrity = GraphIntegrity(
+        return GraphIntegrity(
             is_valid=is_valid,
-            # if True, this is not a bad thing for a containment tree, that's the type of graph we are generating
             is_weakly_connected=is_weakly_connected,
             missing_edge_endpoints=missing_edge_endpoints,
             isolated_node_ids=isolated_node_ids,
@@ -269,8 +295,7 @@ class GraphGenerator:
 
     def run(self) -> BaseGraph:
         """
-        Run the graph.
-        If BaseGraph extends, this will need to be updated to extend the Graph Object.
+        Traverse the directory and populate the graph.
 
         Returns:
             BaseGraph

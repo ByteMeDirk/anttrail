@@ -1,11 +1,18 @@
 """Terminal interface for anttrail."""
+
 from __future__ import annotations
 
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from anttrail.graph import GraphGenerator
+from anttrail.files import UnsupportedWriteFormatError
+from anttrail.graph import (
+    DEFAULT_IGNORED_DIRECTORIES,
+    DEFAULT_SCHEMA_VERSION,
+    GraphGenerator,
+)
+from anttrail.python_parser import SourceParseError
 
 DISTRIBUTION_NAME = "anttrail"
 
@@ -23,10 +30,19 @@ def existing_directory(value: str) -> Path:
     path = Path(value).expanduser()
 
     if not path.is_dir():
-        raise argparse.ArgumentTypeError(
-            f"Directory {value} does not exist."
-        )
+        raise argparse.ArgumentTypeError(f"Directory {value} does not exist.")
     return path.resolve()
+
+
+def non_negative_int(value: str) -> int:
+    """Handle a CLI value that must be an integer of 0 or more."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not an integer.") from None
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"{value} is less than 0.")
+    return number
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--version", "-v",
+        "--version",
+        "-v",
         action="version",
         version=f"%(prog)s {get_version()}",
         help="Show version information and exit.",
@@ -50,70 +67,88 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory to be crawled for graph generation.",
     )
     parser.add_argument(
-        "--schema-version", "-s",
+        "--schema-version",
+        "-s",
+        default=DEFAULT_SCHEMA_VERSION,
         metavar="VERSION",
         help="Schema version to use for graph generation.",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         metavar="PATH",
         help=(
             "Output file where the graph will be written. If omitted, the graph "
-            "is printed to the console as json. The filename extension selects the output "
-            "format when supported."
+            "is printed to the console as JSON. The filename extension selects the "
+            "output format: .json or .yaml."
         ),
     )
     parser.add_argument(
         "--validate",
         action="store_true",
-        help=(
-            "If set, the graph is validated before writing the graph."
-        )
+        help="If set, the graph is validated before writing the graph.",
     )
     parser.add_argument(
         "--silence-read-failure",
         action="store_true",
-        help="Ignore read failures, such as unsupported file formats.",
+        help="Skip directories and Python files that cannot be read instead of failing.",
     )
     parser.add_argument(
         "--silence-write-failure",
         action="store_true",
-        help="Ignore write failures, such as unsupported output formats.",
+        help="Do not fail when the output format is unsupported.",
+    )
+
+    parser.add_argument(
+        "--symbol-depth",
+        type=non_negative_int,
+        metavar="N",
+        help=(
+            "Levels of Python symbols to add below each .py file: 1 adds top-level "
+            "classes, functions and variables, 2 adds class members, and so on. "
+            "0 adds none. If omitted, all levels are added."
+        ),
     )
     parser.add_argument(
-        "--verbose",
-        action="count",
-        default=0,
-        help="Increase verbosity.",
+        "--no-ignore",
+        action="store_true",
+        help=(
+            "Include directories that are skipped by default: "
+            f"{', '.join(sorted(DEFAULT_IGNORED_DIRECTORIES))}."
+        ),
     )
 
     return parser
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Main entry point."""
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(argv)
 
     graph_generator = GraphGenerator(
         directory_path=args.directory,
         schema_version=args.schema_version,
-        output_path=args.output,
+        ignored_directories=(
+            frozenset() if args.no_ignore else DEFAULT_IGNORED_DIRECTORIES
+        ),
+        symbol_depth=args.symbol_depth,
         silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )
 
-    graph_generator.run()
+    try:
+        graph_generator.run()
 
-    if args.validate:
-        graph_generator.validate()
-        if graph_generator.graph_integrity:
-            print(graph_generator.graph_integrity.model_dump_json())
+        if args.validate:
+            print(graph_generator.validate().model_dump_json())
 
-    if args.output:
-        graph_generator.write_file(Path(args.output))
-    else:
-        print(graph_generator.graph.model_dump_json())
+        if args.output:
+            graph_generator.write_file(args.output)
+        else:
+            print(graph_generator.graph.model_dump_json())
+    except (OSError, SourceParseError, UnsupportedWriteFormatError) as error:
+        raise SystemExit(f"anttrail: error: {error}") from error
 
 
 if __name__ == "__main__":
