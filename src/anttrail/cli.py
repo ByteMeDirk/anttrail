@@ -34,6 +34,17 @@ def existing_directory(value: str) -> Path:
     return path.resolve()
 
 
+def non_negative_int(value: str) -> int:
+    """Handle a CLI value that must be an integer of 0 or more."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not an integer.") from None
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"{value} is less than 0.")
+    return number
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
     parser = argparse.ArgumentParser(
@@ -90,6 +101,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--symbol-depth",
+        type=non_negative_int,
+        metavar="N",
+        help=(
+            "Levels of Python symbols to add below each .py file: 1 adds top-level "
+            "classes, functions and variables, 2 adds class members, and so on. "
+            "0 adds none. If omitted, all levels are added."
+        ),
+    )
+    parser.add_argument(
         "--no-ignore",
         action="store_true",
         help=(
@@ -111,6 +132,7 @@ def main(argv: list[str] | None = None) -> None:
         ignored_directories=(
             frozenset() if args.no_ignore else DEFAULT_IGNORED_DIRECTORIES
         ),
+        symbol_depth=args.symbol_depth,
         silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )

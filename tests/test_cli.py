@@ -67,3 +67,55 @@ def test_silence_write_failure_exits_cleanly(tmp_path: Path) -> None:
             "--silence-write-failure",
         ]
     )
+
+
+PYTHON_ASSETS = Path(__file__).parent / "python_assets"
+
+
+def symbol_ids(capsys: pytest.CaptureFixture[str]) -> set[str]:
+    graph = json.loads(capsys.readouterr().out)
+    return {node["id"] for node in graph["nodes"] if "::" in node["id"]}
+
+
+def test_symbols_are_included_by_default(capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(PYTHON_ASSETS)])
+
+    assert "shapes.py::Shape.Style.color" in symbol_ids(capsys)
+
+
+def test_symbol_depth_zero_matches_a_graph_without_symbols(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(PYTHON_ASSETS), "--symbol-depth", "0"])
+
+    assert symbol_ids(capsys) == set()
+
+
+def test_symbol_depth_one_limits_to_top_level(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(PYTHON_ASSETS), "--symbol-depth", "1"])
+
+    ids = symbol_ids(capsys)
+    assert "shapes.py::Shape" in ids
+    assert "shapes.py::Shape.area" not in ids
+
+
+@pytest.mark.parametrize("value", ["-1", "two"])
+def test_invalid_symbol_depth_exits_with_usage_error(value: str) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(PYTHON_ASSETS), "--symbol-depth", value])
+
+    assert exit_info.value.code == 2
+
+
+def test_unparseable_python_file_exits_with_one_line_error(tmp_path: Path) -> None:
+    (tmp_path / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(tmp_path)])
+
+    message = str(exit_info.value)
+    assert message.startswith("anttrail: error: ")
+    assert "broken.py" in message
+    assert "\n" not in message
