@@ -1,6 +1,6 @@
 [project]
 name = "anttrail"
-version = "0.1.0"
+version = "0.1.1"
 description = "AntTrail is a lightweight Python library for building structured, queryable repository graphs. It helps agents and other software systems retrieve object context without reading or scraping an entire repository."
 readme = "README.md"
 requires-python = ">=3.11"
