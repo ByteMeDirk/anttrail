@@ -1,6 +1,6 @@
 """All models for the graph generation functionality."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 

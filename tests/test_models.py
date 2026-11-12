@@ -1,6 +1,6 @@
 """Tests for models."""
 
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -42,7 +42,7 @@ def test_graph_defaults(root_node: BaseNode) -> None:
     assert graph.root_id == "."
     assert graph.nodes == []
     assert graph.edges == []
-    assert graph.created_at.tzinfo is timezone.utc
+    assert graph.created_at.tzinfo is UTC
 
 
 def test_add_and_pop_node(root_node: BaseNode) -> None:

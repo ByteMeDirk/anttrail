@@ -8,12 +8,12 @@ import yaml
 
 from anttrail.files import SupportedWriteFormats, UnsupportedWriteFormatError
 from anttrail.models import (
+    BaseEdge,
     BaseGraph,
     BaseNode,
-    NodeType,
     EntityRelationshipType,
-    BaseEdge,
     GraphIntegrity,
+    NodeType,
 )
 
 DEFAULT_SCHEMA_VERSION = "<unset>"
