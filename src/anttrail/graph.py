@@ -1,5 +1,6 @@
 """The main Base GraphGenerator"""
 
+import os
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -16,6 +17,18 @@ from anttrail.models import (
 )
 
 DEFAULT_SCHEMA_VERSION = "<unset>"
+DEFAULT_IGNORED_DIRECTORIES = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
 
 
 class GraphGenerator:
@@ -23,6 +36,8 @@ class GraphGenerator:
         self,
         directory_path: Path,
         schema_version: str = DEFAULT_SCHEMA_VERSION,
+        ignored_directories: frozenset[str] = DEFAULT_IGNORED_DIRECTORIES,
+        silence_read_failure: bool = False,
         silence_write_failure: bool = False,
     ):
         """
@@ -32,9 +47,13 @@ class GraphGenerator:
         Args:
             directory_path: The directory to traverse.
             schema_version: The schema version stamped onto the graph.
+            ignored_directories: Names of directories to leave out of the graph.
+            silence_read_failure: Skip, rather than raise on, unreadable directories.
             silence_write_failure: Skip, rather than raise on, unsupported output formats.
         """
         self.root_path: Path = directory_path
+        self.ignored_directories: frozenset[str] = ignored_directories
+        self.silence_read_failure: bool = silence_read_failure
         self.silence_write_failure: bool = silence_write_failure
 
         self.graph: BaseGraph = BaseGraph(
@@ -88,74 +107,48 @@ class GraphGenerator:
         """
         return path.relative_to(self.root_path).as_posix() or "."
 
-    def _containment_edge(self, path: Path) -> str:
-        """
-        Return the edge id of a path.
-
-        Args:
-            path (Path): The relevant path to determine its edge id.
-
-        Returns:
-            str: The edge id.
-        """
-        return self._canonical_id(path.parent)
-
-    def _build_nodes(self, artefact: Path) -> None:
-        """
-        Add nodes to the graph.
-
-        Args:
-            artefact: Path to the artefact.
-
-        Returns:
-            None
-        """
-        if artefact.is_dir():
-            node_type = NodeType.DIRECTORY
-        elif artefact.is_file():
-            node_type = NodeType.FILE
-        else:
-            raise ValueError("Unsupported artefact type: %s", artefact)
-
-        node = BaseNode(
-            id=self._canonical_id(artefact),
-            path=artefact,
-            name=artefact.name,
-            type=node_type,
-        )
-        self.graph.add_node(node)
-
-    def _build_edges(self, artefact: Path) -> None:
-        """
-        Add edges to the graph.
-
-        Returns:
-            None
-        """
-        source = self._containment_edge(artefact)
-        target = self._canonical_id(artefact)
+    def _build_node(self, artefact: Path, node_type: NodeType) -> None:
+        """Add a node and its containment edge to the graph."""
+        node_id = self._canonical_id(artefact)
+        parent_id = self._canonical_id(artefact.parent)
         relationship_type = EntityRelationshipType.CONTAINS
 
-        edge = BaseEdge(
-            id=f"{source}|{relationship_type.value}|{target}",
-            source=source,
-            type=relationship_type,
-            target=target,
+        self.graph.add_node(
+            BaseNode(id=node_id, path=artefact, name=artefact.name, type=node_type)
+        )
+        self.graph.add_edge(
+            BaseEdge(
+                id=f"{parent_id}|{relationship_type.value}|{node_id}",
+                source=parent_id,
+                type=relationship_type,
+                target=node_id,
+            )
         )
 
-        self.graph.add_edge(edge)
+    def _raise_unless_silenced(self, error: OSError) -> None:
+        """Handle a directory that could not be listed during traversal."""
+        if not self.silence_read_failure:
+            raise error
 
     def _traversal(self) -> None:
         """
-        Traverse the graph.
-        Extendable to all build methods.
+        Walk the directory in a stable order, skipping ignored directories.
 
-        Returns:
-            None
+        Raises:
+            OSError: If a directory cannot be read and read failures are not silenced.
         """
-        for artefact in self.root_path.rglob("*"):
-            self._build_nodes(artefact)
-            self._build_edges(artefact)
+        for current, directory_names, file_names in os.walk(
+            self.root_path, onerror=self._raise_unless_silenced
+        ):
+            directory_names[:] = sorted(
+                name for name in directory_names if name not in self.ignored_directories
+            )
+            current_path = Path(current)
+
+            for name in directory_names:
+                self._build_node(current_path / name, NodeType.DIRECTORY)
+            for name in sorted(file_names):
+                self._build_node(current_path / name, NodeType.FILE)
 
     def validate(self) -> GraphIntegrity:
         """

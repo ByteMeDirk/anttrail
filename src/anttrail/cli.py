@@ -6,7 +6,12 @@ import argparse
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from anttrail.graph import DEFAULT_SCHEMA_VERSION, GraphGenerator
+from anttrail.files import UnsupportedWriteFormatError
+from anttrail.graph import (
+    DEFAULT_IGNORED_DIRECTORIES,
+    DEFAULT_SCHEMA_VERSION,
+    GraphGenerator,
+)
 
 DISTRIBUTION_NAME = "anttrail"
 
@@ -63,8 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=(
             "Output file where the graph will be written. If omitted, the graph "
-            "is printed to the console as json. The filename extension selects the output "
-            "format when supported."
+            "is printed to the console as JSON. The filename extension selects the "
+            "output format: .json or .yaml."
         ),
     )
     parser.add_argument(
@@ -75,12 +80,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--silence-read-failure",
         action="store_true",
-        help="Ignore read failures, such as unsupported file formats.",
+        help="Skip directories that cannot be read instead of failing.",
     )
     parser.add_argument(
         "--silence-write-failure",
         action="store_true",
-        help="Ignore write failures, such as unsupported output formats.",
+        help="Do not fail when the output format is unsupported.",
+    )
+
+    parser.add_argument(
+        "--no-ignore",
+        action="store_true",
+        help=(
+            "Include directories that are skipped by default: "
+            f"{', '.join(sorted(DEFAULT_IGNORED_DIRECTORIES))}."
+        ),
     )
 
     return parser
@@ -93,17 +107,25 @@ def main(argv: list[str] | None = None) -> None:
     graph_generator = GraphGenerator(
         directory_path=args.directory,
         schema_version=args.schema_version,
+        ignored_directories=(
+            frozenset() if args.no_ignore else DEFAULT_IGNORED_DIRECTORIES
+        ),
+        silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )
-    graph_generator.run()
 
-    if args.validate:
-        print(graph_generator.validate().model_dump_json())
+    try:
+        graph_generator.run()
 
-    if args.output:
-        graph_generator.write_file(args.output)
-    else:
-        print(graph_generator.graph.model_dump_json())
+        if args.validate:
+            print(graph_generator.validate().model_dump_json())
+
+        if args.output:
+            graph_generator.write_file(args.output)
+        else:
+            print(graph_generator.graph.model_dump_json())
+    except (OSError, UnsupportedWriteFormatError) as error:
+        raise SystemExit(f"anttrail: error: {error}") from error
 
 
 if __name__ == "__main__":
