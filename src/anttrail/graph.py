@@ -17,6 +17,9 @@ from anttrail.models import (
 )
 
 DEFAULT_SCHEMA_VERSION = "<unset>"
+PARENT_EDGE_TYPES = frozenset(
+    {EntityRelationshipType.CONTAINS, EntityRelationshipType.DECLARES}
+)
 DEFAULT_IGNORED_DIRECTORIES = frozenset(
     {
         ".git",
@@ -219,18 +222,16 @@ class GraphGenerator:
 
         unreachable_from_root = sorted(node_ids - visited)
 
-        # Check CONTAINS status, this will need to be extended eventually
-        incoming_contains: dict[str, int] = {node_id: 0 for node_id in node_ids}
+        # Every node except the root has exactly one parent, which is either
+        # its directory (CONTAINS) or the file or class that declares it (DECLARES).
+        incoming_parent_edges: dict[str, int] = {node_id: 0 for node_id in node_ids}
         for edge in self.graph.edges:
-            if (
-                edge.type == EntityRelationshipType.CONTAINS
-                and edge.target in incoming_contains
-            ):
-                incoming_contains[edge.target] += 1
+            if edge.type in PARENT_EDGE_TYPES and edge.target in incoming_parent_edges:
+                incoming_parent_edges[edge.target] += 1
 
         invalid_containment_nodes = sorted(
             node_id
-            for node_id, incoming_count in incoming_contains.items()
+            for node_id, incoming_count in incoming_parent_edges.items()
             if node_id != self.graph.root_id and incoming_count != 1
         )
 

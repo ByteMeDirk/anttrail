@@ -9,7 +9,7 @@ import yaml
 
 from anttrail.files import UnsupportedWriteFormatError
 from anttrail.graph import GraphGenerator
-from anttrail.models import BaseNode, NodeType
+from anttrail.models import BaseNode, EntityRelationshipType, NodeType
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -185,3 +185,43 @@ def test_write_file_ignores_unsupported_format_when_silenced(tmp_path: Path) -> 
     generator.write_file(output)
 
     assert not output.exists()
+
+
+def test_validate_accepts_symbol_declared_by_file(tmp_path: Path) -> None:
+    generator = GraphGenerator(tmp_path)
+    generator._add_child(
+        BaseNode(id="a.py", path=tmp_path / "a.py", name="a.py", type=NodeType.FILE),
+        ".",
+        EntityRelationshipType.CONTAINS,
+    )
+    generator._add_child(
+        BaseNode(
+            id="a.py::A",
+            path=tmp_path / "a.py",
+            name="A",
+            type=NodeType.CLASS,
+            line_start=1,
+            line_end=2,
+        ),
+        "a.py",
+        EntityRelationshipType.DECLARES,
+    )
+
+    assert generator.validate().is_valid
+
+
+def test_validate_rejects_symbol_without_declaring_edge(tmp_path: Path) -> None:
+    generator = GraphGenerator(tmp_path)
+    generator._add_child(
+        BaseNode(id="a.py", path=tmp_path / "a.py", name="a.py", type=NodeType.FILE),
+        ".",
+        EntityRelationshipType.CONTAINS,
+    )
+    generator.graph.add_node(
+        BaseNode(id="a.py::A", path=tmp_path / "a.py", name="A", type=NodeType.CLASS)
+    )
+
+    integrity = generator.validate()
+
+    assert not integrity.is_valid
+    assert integrity.invalid_containment_nodes == ["a.py::A"]
