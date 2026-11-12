@@ -85,3 +85,25 @@ def test_integrity_isolated_node_ids_are_strings() -> None:
     )
 
     assert integrity.isolated_node_ids == ["orphan"]
+
+
+@pytest.mark.parametrize(
+    "node_type",
+    [NodeType.CLASS, NodeType.METHOD, NodeType.FUNCTION, NodeType.VARIABLE],
+)
+def test_symbol_node_carries_line_range(node_type: NodeType) -> None:
+    node = BaseNode(
+        id="a.py::x",
+        path=Path("a.py"),
+        name="x",
+        type=node_type,
+        line_start=3,
+        line_end=9,
+    )
+
+    assert (node.line_start, node.line_end) == (3, 9)
+
+
+def test_line_range_defaults_to_none(root_node: BaseNode) -> None:
+    assert root_node.line_start is None
+    assert root_node.line_end is None

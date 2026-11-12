@@ -12,6 +12,10 @@ class NodeType(Enum):
 
     DIRECTORY = "Directory"
     FILE = "File"
+    CLASS = "Class"
+    METHOD = "Method"
+    FUNCTION = "Function"
+    VARIABLE = "Variable"
 
 
 class EntityRelationshipType(Enum):
@@ -32,12 +36,16 @@ class BaseNode(BaseModel):
         path: Node Path
         name: Node name
         type: Node type
+        line_start: First line of a symbol in its file, if the node is a symbol.
+        line_end: Last line of a symbol in its file, if the node is a symbol.
     """
 
     id: str
     path: Path
     name: str
     type: NodeType
+    line_start: int | None = None
+    line_end: int | None = None
 
 
 class BaseEdge(BaseModel):
