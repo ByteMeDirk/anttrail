@@ -1,6 +1,6 @@
 # Phase 2 implementation strategy: basic Python parsing
 
-Status: reviewed, ready to execute. Nothing in this document is implemented yet.
+Status: implemented.
 
 ## Goal
 
@@ -112,8 +112,9 @@ failures. The file node always stays in the graph. Without `--silence-read-failu
 ### Validation changes
 
 `validate()` currently requires every non-root node to have exactly one incoming `CONTAINS` edge. Symbol nodes have
-none, so every Python graph would report as invalid. The fix is to require exactly one incoming `CONTAINS` edge for
-directory and file nodes, and exactly one incoming `DECLARES` edge for symbol nodes. This is the one change to existing
+none, so every Python graph would report as invalid. The fix requires exactly one incoming `CONTAINS` or
+`DECLARES` edge for every non-root node. It does not check that a file has a `CONTAINS` parent and a symbol a `DECLARES`
+parent, which keeps the rule short. This is the one change to existing
 behavior, and it needs its own test before the parser is wired in.
 
 ## Implementation steps
@@ -121,8 +122,8 @@ behavior, and it needs its own test before the parser is wired in.
 Each step is one commit, and the test suite passes after each one.
 
 1. `refactor(graph): share node and edge creation between traversal and symbols`. Pure refactor, no behavior change.
-2. `fix(validate): check incoming edges by node type`. Tests build a hand-made graph with a `DECLARES` edge.
-3. `feat(models): add symbol node types and line ranges`. Model tests for the new enum members and fields.
+2. `feat(models): add symbol node types and line ranges`. Model tests for the new enum members and fields.
+3. `fix(validate): accept DECLARES as a parent edge`. Tests build a hand-made graph with a `DECLARES` edge.
 4. `feat(parser): extract classes, methods, functions and variables from Python source`. Unit tests on source strings.
    Cases: nested classes, async and decorated methods, tuple targets, duplicate bindings, an empty file, a syntax error,
    and each `max_depth` value from 0 to 3.
