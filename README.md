@@ -90,6 +90,25 @@ anttrail ./docs --silence-read-failure --output graph.json
 anttrail ./docs --silence-write-failure --output graph.unsupported
 ```
 
+### Include Python symbols
+
+AntTrail adds a node for each class, function, method, and variable declared at the top level of a `.py` file or of a
+class. It does not read function bodies or conditional blocks. Use `--symbol-depth` to limit how many levels it adds:
+
+```bash
+# Top-level classes, functions, and variables only.
+anttrail ./src --symbol-depth 1
+
+# Also add class members.
+anttrail ./src --symbol-depth 2
+
+# Files and directories only.
+anttrail ./src --symbol-depth 0
+```
+
+Without the option, AntTrail adds every level. If a Python file has a syntax error or cannot be read, AntTrail stops with
+a one-line error. Add `--silence-read-failure` to keep the file's node and skip its symbols instead.
+
 ### Skip or include directories
 
 AntTrail skips `.git`, `.venv`, `venv`, `__pycache__`, `node_modules`, `.pytest_cache`, `.mypy_cache`, and `.ruff_cache`
@@ -113,7 +132,8 @@ anttrail [OPTIONS] DIRECTORY
 | `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                          |
 | `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console |
 | `--validate`               | -            | Validate the generated graph before output                               |
-| `--silence-read-failure`   | -            | Skip directories that cannot be read instead of failing                  |
+| `--symbol-depth N`         | -            | Limit how many levels of Python symbols are added; `0` adds none         |
+| `--silence-read-failure`   | -            | Skip directories and Python files that cannot be read instead of failing |
 | `--silence-write-failure`  | -            | Do not fail when the output format is unsupported                        |
 | `--no-ignore`              | -            | Include the directories that are skipped by default                      |
 
@@ -132,13 +152,16 @@ AntTrail currently:
 
 - Traverses a configured repository or directory root.
 - Creates graph nodes for directories and files.
+- Creates graph nodes for the classes, functions, methods, and variables declared in Python files.
 - Creates directed `CONTAINS` relationships for immediate parent-child filesystem relationships.
+- Creates directed `DECLARES` relationships from a file or class to the symbols it declares.
 - Uses normalized root-relative IDs for stable graph traversal.
 - Validates containment relationships, node references, root reachability, and weak graph connectivity.
 - Exports the graph as JSON or YAML.
 - Skips common non-source directories such as `.git` and virtual environments.
 
-At present, AntTrail models filesystem structure. It does not yet extract semantic document content.
+AntTrail reads Python files only for the symbols listed above. It does not extract imports, calls, inheritance, or
+instance attributes, and it does not extract content from other file types.
 
 ## Motivation
 
@@ -172,8 +195,4 @@ lifting. I want it to be local-first, lightweight, deterministic, extensible, an
 
 ---
 
-Please note that this is currently a project in its infancy. Part of this endeavor is to produce something original and
-challenging. Therefore, **no agent co-authoring/coding** is used in this repository. Subject material in question is
-sourced from an LLM or the web, but the code in this repo is made by a human, and the goal is to keep it that way.
-
-> It's gonna be ugly at first, but hopefully it gets better :D
+Please note that this is currently a project in its infancy.

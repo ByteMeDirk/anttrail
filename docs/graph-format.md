@@ -9,13 +9,43 @@ AntTrail writes one graph per run. This page describes the fields and shows the 
 | `schema_version` | The string you pass with `--schema-version`.                               |
 | `created_at`     | UTC timestamp of when the graph was created.                               |
 | `root_id`        | ID of the root node. Always `.`.                                           |
-| `nodes`          | One node per directory or file, including the root.                        |
-| `edges`          | One `CONTAINS` edge from each node's parent directory to the node.         |
+| `nodes`          | One node per directory, file, and Python symbol, including the root.       |
+| `edges`          | One edge from each node's parent to the node.                              |
 
-Each node has an `id`, an absolute `path`, a `name`, and a `type` of `Directory` or `File`. The `id` is the POSIX-style
-path relative to the crawled directory, so it stays the same on every operating system.
+Each node has an `id`, an absolute `path`, a `name`, and a `type`. The `type` is `Directory`, `File`, `Class`,
+`Method`, `Function`, or `Variable`. The `id` of a directory or file is the POSIX-style path relative to the crawled
+directory, so it stays the same on every operating system.
 
-Each edge has an `id` in the form `source|CONTAINS|target`, plus `source`, `type`, and `target`.
+Each edge has an `id` in the form `source|TYPE|target`, plus `source`, `type`, and `target`. The `type` is `CONTAINS`
+from a directory to its children, and `DECLARES` from a file or class to the symbols it declares.
+
+## Python symbols
+
+AntTrail reads each `.py` file and adds a node for every class, function, method, and variable declared at the top
+level of the module or of a class. It does not read function bodies or conditional blocks, so it does not report local
+variables, instance attributes such as `self.x`, or names bound inside an `if` or `try` block.
+
+| Type       | What it is                                                               |
+|------------|--------------------------------------------------------------------------|
+| `Class`    | A class, including a class nested in another class.                      |
+| `Method`   | A function, async or not, defined directly in a class body.              |
+| `Function` | A function defined directly in a module.                                 |
+| `Variable` | A plain name assigned in a module or class body.                         |
+
+Tuple targets such as `a, b = 1, 2` produce one variable per name. Augmented assignments (`x += 1`), attribute targets,
+and subscripts do not produce variables.
+
+A symbol's `id` is the ID of its file, then `::`, then its dotted qualified name, for example `shapes.py::Shape.area`.
+The `path` is the file's path, `name` is the last part of the qualified name, and `line_start` and `line_end` give the
+lines the symbol spans. A decorated function starts at its `def` line. Directory and file nodes have no line range.
+
+If a name is bound more than once in the same scope, such as a property and its setter, AntTrail keeps the first binding.
+
+Use `--symbol-depth N` to limit the levels added below each file. A top-level symbol has depth 1, and a member of a
+top-level class has depth 2. A depth of 0 adds no symbols and does not open Python files.
+
+AntTrail parses files with the grammar of the Python version that runs it. On Python 3.11, a file that uses newer syntax
+is reported as a parse error.
 
 Nodes and edges appear in a stable order: for each directory, its subdirectories come first, then its files, each sorted
 by name.
@@ -93,6 +123,57 @@ edges:
   target: dir_2/Doc_2_1.md
 ```
 
+### Python symbols example
+
+For a directory that contains one file, `shapes.py`:
+
+```python
+SIDES = 4
+
+
+class Shape:
+    def area(self):
+        return 0
+```
+
+AntTrail adds these nodes after the `shapes.py` file node, and these edges. The `path` values depend on where you run the
+command.
+
+```yaml
+nodes:
+- id: shapes.py::SIDES
+  path: /home/you/project/shapes.py
+  name: SIDES
+  type: Variable
+  line_start: 1
+  line_end: 1
+- id: shapes.py::Shape
+  path: /home/you/project/shapes.py
+  name: Shape
+  type: Class
+  line_start: 4
+  line_end: 6
+- id: shapes.py::Shape.area
+  path: /home/you/project/shapes.py
+  name: area
+  type: Method
+  line_start: 5
+  line_end: 6
+edges:
+- id: shapes.py|DECLARES|shapes.py::SIDES
+  source: shapes.py
+  type: DECLARES
+  target: shapes.py::SIDES
+- id: shapes.py|DECLARES|shapes.py::Shape
+  source: shapes.py
+  type: DECLARES
+  target: shapes.py::Shape
+- id: shapes.py::Shape|DECLARES|shapes.py::Shape.area
+  source: shapes.py::Shape
+  type: DECLARES
+  target: shapes.py::Shape.area
+```
+
 ## Validation report
 
 Add `--validate` to print an integrity report before the graph. For the graph above, the report is:
@@ -108,4 +189,4 @@ Add `--validate` to print an integrity report before the graph. For the graph ab
 | `missing_edge_endpoints`    | Edges that point to a node that does not exist.                      |
 | `isolated_node_ids`         | Nodes, other than the root, that have no edges.                      |
 | `unreachable_from_root`     | Nodes that cannot be reached from the root.                          |
-| `invalid_containment_nodes` | Nodes, other than the root, that do not have exactly one parent.     |
+| `invalid_containment_nodes` | Nodes, other than the root, that lack exactly one `CONTAINS` or `DECLARES` parent edge. |
