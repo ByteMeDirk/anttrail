@@ -10,12 +10,14 @@ from pydantic import BaseModel, Field
 
 class NodeType(Enum):
     """Node Labels"""
+
     DIRECTORY = "Directory"
     FILE = "File"
 
 
 class EntityRelationshipType(Enum):
     """Relationship Labels"""
+
     CONTAINS = "CONTAINS"
     DECLARES = "DECLARES"
     REFERENCES = "REFERENCES"
@@ -24,6 +26,7 @@ class EntityRelationshipType(Enum):
 
 class EntityRelationshipSyntax(Enum):
     """Relationship Syntax"""
+
     UNDIRECTED = "--"
     INBOUND = "<-"
     OUTBOUND = "->"
@@ -39,6 +42,7 @@ class BaseNode(BaseModel):
         name: Node name
         type: Node type
     """
+
     id: str
     path: Path
     name: str
@@ -55,6 +59,7 @@ class BaseEdge(BaseModel):
         source: Source Node ID
         target: Target Node ID
     """
+
     id: str
     source: str
     type: EntityRelationshipType
@@ -72,8 +77,11 @@ class BaseGraph(BaseModel):
         nodes: List of Node objects.
         edges: List of Edge objects.
     """
+
     schema_version: str = Field(title="Schema Version")
-    created_at: datetime = Field(title="Schema Creation UTC Timestamp", default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(
+        title="Schema Creation UTC Timestamp", default_factory=lambda: datetime.now(UTC)
+    )
     root_id: str = Field(title="Schema Root Node ID", default=".")
     nodes: list[BaseNode] = Field(title="Schema Node List", default_factory=list)
     edges: list[BaseEdge] = Field(title="Schema Edge List", default_factory=list)
@@ -102,6 +110,7 @@ class BaseGraph(BaseModel):
         Returns:
             tuple(str, str): Node Graph, Edge Graph
         """
+
         def escape(value: str) -> str:
             return value.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -110,9 +119,7 @@ class BaseGraph(BaseModel):
                 f'{key}: "{escape(str(value))}"' for key, value in prop.items()
             )
 
-        nodes_by_id = {
-            node.id: node for node in self.nodes
-        }
+        nodes_by_id = {node.id: node for node in self.nodes}
 
         node_lines = []
         for node in sorted(self.nodes, key=lambda item: item.id):
@@ -121,26 +128,21 @@ class BaseGraph(BaseModel):
                 "path": node.path,
                 "name": node.name,
             }
-            node_lines.append(
-                f'(:{node.type.value} {{{fmt_properties(properties)}}})'
-            )
+            node_lines.append(f"(:{node.type.value} {{{fmt_properties(properties)}}})")
 
         edge_lines = []
-        for edge in sorted(self.edges, key=lambda item: (item.source, item.type.value, item.target)):
+        for edge in sorted(
+            self.edges, key=lambda item: (item.source, item.type.value, item.target)
+        ):
             source_node = nodes_by_id[edge.source]
             target_node = nodes_by_id[edge.target]
 
-            source = (
-                f'(:{source_node.type.value} {{id: "{escape(source_node.id)}"}})'
-            )
-            target = (
-                f'(:{target_node.type.value} {{id: "{escape(target_node.id)}"}})'
-            )
-            edge_lines.append(
-                f"{source}-[:{edge.type.value}]->{target}"
-            )
+            source = f'(:{source_node.type.value} {{id: "{escape(source_node.id)}"}})'
+            target = f'(:{target_node.type.value} {{id: "{escape(target_node.id)}"}})'
+            edge_lines.append(f"{source}-[:{edge.type.value}]->{target}")
 
         return "\n".join([*node_lines]), "\n".join([*edge_lines])
+
 
 class GraphIntegrity(BaseModel):
     """
@@ -151,9 +153,16 @@ class GraphIntegrity(BaseModel):
         2. Graph connectivity.
         3. Structural containment validity.
     """
+
     is_valid: bool = Field(title="Validity of Graph integrity")
     is_weakly_connected: bool = Field(title="Connection strength of Graph integrity")
-    missing_edge_endpoints:list[str] = Field(title="Missing endpoints", default_factory=list)
-    isolated_node_ids: list[set[str]] = Field(title="Isolated nodes", default_factory=list)
-    unreachable_from_root: list[str] = Field(title="Unreachable from root", default_factory=list)
-    invalid_containment_nodes: list[str] = Field(title="Invalid containment nodes", default_factory=list)
+    missing_edge_endpoints: list[str] = Field(
+        title="Missing endpoints", default_factory=list
+    )
+    isolated_node_ids: list[str] = Field(title="Isolated nodes", default_factory=list)
+    unreachable_from_root: list[str] = Field(
+        title="Unreachable from root", default_factory=list
+    )
+    invalid_containment_nodes: list[str] = Field(
+        title="Invalid containment nodes", default_factory=list
+    )

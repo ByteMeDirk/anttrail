@@ -222,7 +222,7 @@ class GraphGenerator:
                 adjacency[edge.target].add(edge.source)
 
         isolated_node_ids = sorted(
-            node_ids for node_id in node_ids if not adjacency[node_id]
+            node_id for node_id in node_ids if not adjacency[node_id]
         )
 
         # traverse all node_ids to check their status
