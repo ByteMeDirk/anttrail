@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from anttrail.files import SupportedReadFormats, SupportedWriteFormats
+from anttrail.files import SupportedWriteFormats
 from anttrail.models import (
     BaseGraph,
     BaseNode,
@@ -59,23 +59,6 @@ class GraphGenerator:
         self.graph_integrity: GraphIntegrity | None = None
 
         self.kwargs: dict[str, Any] = kwargs
-
-    def read_file(self, file_path: Path) -> list:
-        """
-        Read a file into a list.
-
-        Args:
-            file_path (Path): The file to read.
-
-        Returns:
-            list: A list of all lines in the file.
-        """
-        if SupportedReadFormats.supports(file_path):
-            return file_path.read_text(encoding="utf-8").splitlines()
-        else:
-            if not self.kwargs.get("silence_read_failure"):
-                raise ValueError("Unsupported file format during read: %s", file_path)
-            return []
 
     def write_file(self, file_path: Path) -> None:
         """

@@ -3,7 +3,6 @@
 from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -22,14 +21,6 @@ class EntityRelationshipType(Enum):
     DECLARES = "DECLARES"
     REFERENCES = "REFERENCES"
     LINKS_TO = "LINKS_TO"
-
-
-class EntityRelationshipSyntax(Enum):
-    """Relationship Syntax"""
-
-    UNDIRECTED = "--"
-    INBOUND = "<-"
-    OUTBOUND = "->"
 
 
 class BaseNode(BaseModel):
@@ -101,47 +92,6 @@ class BaseGraph(BaseModel):
     def pop_edge(self, edge: BaseEdge) -> None:
         """Remove an edge from the graph"""
         self.edges.remove(edge)
-
-    def graph_syntax(self) -> tuple:
-        """
-        Generate Graph syntax.
-        The Graph model may be reduced to generic graph syntax, as text.
-
-        Returns:
-            tuple(str, str): Node Graph, Edge Graph
-        """
-
-        def escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace('"', '\\"')
-
-        def fmt_properties(prop: dict[str, Any]) -> str:
-            return ", ".join(
-                f'{key}: "{escape(str(value))}"' for key, value in prop.items()
-            )
-
-        nodes_by_id = {node.id: node for node in self.nodes}
-
-        node_lines = []
-        for node in sorted(self.nodes, key=lambda item: item.id):
-            properties = {
-                "id": node.id,
-                "path": node.path,
-                "name": node.name,
-            }
-            node_lines.append(f"(:{node.type.value} {{{fmt_properties(properties)}}})")
-
-        edge_lines = []
-        for edge in sorted(
-            self.edges, key=lambda item: (item.source, item.type.value, item.target)
-        ):
-            source_node = nodes_by_id[edge.source]
-            target_node = nodes_by_id[edge.target]
-
-            source = f'(:{source_node.type.value} {{id: "{escape(source_node.id)}"}})'
-            target = f'(:{target_node.type.value} {{id: "{escape(target_node.id)}"}})'
-            edge_lines.append(f"{source}-[:{edge.type.value}]->{target}")
-
-        return "\n".join([*node_lines]), "\n".join([*edge_lines])
 
 
 class GraphIntegrity(BaseModel):
