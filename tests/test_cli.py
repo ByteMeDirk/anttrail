@@ -1,10 +1,12 @@
 """Tests for the command line interface."""
 
 import json
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 import pytest
 
+from anttrail import cli
 from anttrail.cli import main
 
 ASSETS = Path(__file__).parent / "assets"
@@ -119,3 +121,14 @@ def test_unparseable_python_file_exits_with_one_line_error(tmp_path: Path) -> No
     assert message.startswith("anttrail: error: ")
     assert "broken.py" in message
     assert "\n" not in message
+
+
+def test_version_falls_back_when_package_is_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_not_found(name: str) -> str:
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(cli, "version", raise_not_found)
+
+    assert cli.get_version() == "0+unknown"

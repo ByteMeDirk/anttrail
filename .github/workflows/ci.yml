@@ -61,6 +61,9 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --python ${{ matrix.python-version }}
       - run: uv run pytest --cov
+      - name: Add the coverage report to the job summary
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        run: uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
   test-min-deps:
     name: test (lowest dependency versions)

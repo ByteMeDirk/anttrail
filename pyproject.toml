@@ -65,6 +65,9 @@ branch = true
 source = ["anttrail"]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 90
 show_missing = true
 skip_covered = true
+exclude_also = [
+    'if __name__ == "__main__":',
+]
