@@ -13,7 +13,7 @@ ASSETS = Path(__file__).parent / "assets"
 
 
 def test_bare_command_prints_graph_json(capsys: pytest.CaptureFixture[str]) -> None:
-    main([str(ASSETS)])
+    main([str(ASSETS), "--section-depth", "0"])
 
     graph = json.loads(capsys.readouterr().out)
     assert len(graph["nodes"]) == 8
@@ -41,7 +41,7 @@ def test_validate_prints_integrity_report_before_graph(
 def test_output_option_writes_file(tmp_path: Path) -> None:
     output = tmp_path / "graph.json"
 
-    main([str(ASSETS), "--output", str(output)])
+    main([str(ASSETS), "--section-depth", "0", "--output", str(output)])
 
     assert len(json.loads(output.read_text(encoding="utf-8"))["nodes"]) == 8
 
@@ -132,3 +132,57 @@ def test_version_falls_back_when_package_is_not_installed(
     monkeypatch.setattr(cli, "version", raise_not_found)
 
     assert cli.get_version() == "0+unknown"
+
+
+MARKDOWN_ASSETS = Path(__file__).parent / "markdown_assets"
+
+
+def section_ids(capsys: pytest.CaptureFixture[str]) -> set[str]:
+    graph = json.loads(capsys.readouterr().out)
+    return {node["id"] for node in graph["nodes"] if node["type"] == "Section"}
+
+
+def test_sections_are_included_by_default(capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(MARKDOWN_ASSETS)])
+
+    assert "guide.md::Guide/Install" in section_ids(capsys)
+
+
+def test_section_depth_zero_matches_a_graph_without_sections(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(MARKDOWN_ASSETS), "--section-depth", "0"])
+
+    assert section_ids(capsys) == set()
+
+
+def test_section_depth_one_limits_to_top_level(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(MARKDOWN_ASSETS), "--section-depth", "1"])
+
+    assert section_ids(capsys) == {
+        "guide.md::Guide",
+        "guide.md::Setext Title",
+        "docs/notes.markdown::Notes",
+    }
+
+
+@pytest.mark.parametrize("value", ["-1", "two"])
+def test_invalid_section_depth_exits_with_usage_error(value: str) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(MARKDOWN_ASSETS), "--section-depth", value])
+
+    assert exit_info.value.code == 2
+
+
+def test_undecodable_markdown_file_exits_with_one_line_error(tmp_path: Path) -> None:
+    (tmp_path / "broken.md").write_bytes(b"# Bad \xff bytes\n")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(tmp_path)])
+
+    message = str(exit_info.value)
+    assert message.startswith("anttrail: error: ")
+    assert "broken.md" in message
+    assert "\n" not in message

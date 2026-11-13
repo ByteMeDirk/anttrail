@@ -1,7 +1,8 @@
 """Extract classes, functions, methods and variables from Python source."""
 
 import ast
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from anttrail.models import NodeType
 
@@ -10,9 +11,10 @@ class SourceParseError(Exception):
     """Raised when a Python file cannot be read or parsed."""
 
 
-@dataclass(frozen=True, slots=True)
-class Symbol:
+class Symbol(BaseModel):
     """A class, function, method or variable declared in a Python file."""
+
+    model_config = ConfigDict(frozen=True)
 
     qualified_name: str
     kind: NodeType

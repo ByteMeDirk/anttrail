@@ -90,7 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--silence-read-failure",
         action="store_true",
-        help="Skip directories and Python files that cannot be read instead of failing.",
+        help=(
+            "Skip directories, Python files, and Markdown files that cannot be read "
+            "instead of failing."
+        ),
     )
     parser.add_argument(
         "--silence-write-failure",
@@ -106,6 +109,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Levels of Python symbols to add below each .py file: 1 adds top-level "
             "classes, functions and variables, 2 adds class members, and so on. "
             "0 adds none. If omitted, all levels are added."
+        ),
+    )
+    parser.add_argument(
+        "--section-depth",
+        type=non_negative_int,
+        metavar="N",
+        help=(
+            "Levels of Markdown sections to add below each .md file: 1 adds top-level "
+            "headings, 2 adds the headings nested in them, and so on. 0 adds none. "
+            "If omitted, all levels are added."
         ),
     )
     parser.add_argument(
@@ -131,6 +144,7 @@ def main(argv: list[str] | None = None) -> None:
             frozenset() if args.no_ignore else DEFAULT_IGNORED_DIRECTORIES
         ),
         symbol_depth=args.symbol_depth,
+        section_depth=args.section_depth,
         silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
     )

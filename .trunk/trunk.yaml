@@ -23,6 +23,8 @@ lint:
       paths:
         - tests/assets/**
         - tests/python_assets/**
+        - tests/markdown_assets/**
+        - benchmarks/fixtures/**
   enabled:
     - actionlint@1.7.12
     - black@26.10.1
