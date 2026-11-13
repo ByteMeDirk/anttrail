@@ -1,0 +1,48 @@
+# This file controls the behavior of Trunk: https://docs.trunk.io/cli
+# To learn more about the format of this file, see https://docs.trunk.io/reference/trunk-yaml
+version: 0.1
+cli:
+  version: 1.29.0
+# Trunk provides extensibility via plugins. (https://docs.trunk.io/plugins)
+plugins:
+  sources:
+    - id: trunk
+      ref: v1.11.0
+      uri: https://github.com/trunk-io/plugins
+# Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
+runtimes:
+  enabled:
+    - node@22.16.0
+    - python@3.14.4
+# Linters and formatters. Python tooling mirrors the dev dependencies in uv.lock.
+# mypy and pytest are not listed here because they need the project's installed
+# dependencies. The pre-push action below runs them through uv instead.
+lint:
+  ignore:
+    - linters: [ALL]
+      paths:
+        - tests/assets/**
+        - tests/python_assets/**
+  enabled:
+    - actionlint@1.7.12
+    - black@26.10.1
+    - git-diff-check
+    - markdownlint@0.50.0
+    - ruff@0.17.5
+    - taplo@0.10.0
+    - trufflehog@3.99.9
+    - yamllint@1.38.0
+actions:
+  enabled:
+    - commitlint
+    - trunk-check-pre-commit
+    - trunk-fmt-pre-commit
+    - trunk-upgrade-available
+    - uv-typecheck-and-test
+  definitions:
+    - id: uv-typecheck-and-test
+      display_name: Type check and test
+      description: Run mypy and pytest through uv before pushing.
+      run: uv run mypy && uv run pytest -q
+      triggers:
+        - git_hooks: [pre-push]

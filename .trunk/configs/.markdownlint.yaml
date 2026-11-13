@@ -1,0 +1,5 @@
+# Prettier friendly markdownlint config (all formatting rules disabled)
+extends: markdownlint/style/prettier
+# Pull request templates start with a section heading, and wide tables are fine.
+MD041: false
+MD060: false
