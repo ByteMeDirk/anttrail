@@ -1,7 +1,5 @@
 """Terminal interface for anttrail."""
 
-from __future__ import annotations
-
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -26,7 +24,7 @@ def get_version() -> str:
 
 
 def existing_directory(value: str) -> Path:
-    """Handle CLI path value."""
+    """Parse a directory argument into an absolute path that must exist."""
     path = Path(value).expanduser()
 
     if not path.is_dir():
