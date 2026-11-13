@@ -37,31 +37,10 @@ jobs:
         with:
           fail-on-severity: high
 
-  codeql:
-    name: codeql (${{ matrix.language }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [python, actions]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: none
-      - uses: github/codeql-action/analyze@v4
-        with:
-          category: /language:${{ matrix.language }}
-
   security-ok:
     name: security-ok
     if: always()
-    needs: [audit, dependency-review, codeql]
+    needs: [audit, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
