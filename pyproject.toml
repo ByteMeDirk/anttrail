@@ -20,7 +20,6 @@ classifiers = [
 dependencies = [
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
-    "trunk>=0.3.0",
 ]
 
 [project.urls]
