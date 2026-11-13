@@ -34,7 +34,7 @@ jobs:
             exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
 
       - name: Require the tag to match the package version
         env:
@@ -43,6 +43,17 @@ jobs:
           package_version="$(uv version --short)"
           if [ "${TAG_NAME#v}" != "$package_version" ]; then
             echo "::error::Tag $TAG_NAME does not match pyproject.toml version $package_version."
+            exit 1
+          fi
+
+      - name: Require a version that is not already on PyPI
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          version="${TAG_NAME#v}"
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/anttrail/$version/json")"
+          if [ "$status" = "200" ]; then
+            echo "::error::anttrail $version is already on PyPI. Bump the version and tag again."
             exit 1
           fi
 
@@ -66,4 +77,4 @@ jobs:
           name: dist
           path: dist/
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@aef6c9b6e301dc803e1bc9133e9ce67ae9b0906b # v1.14.3
