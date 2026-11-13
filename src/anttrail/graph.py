@@ -214,7 +214,7 @@ class GraphGenerator:
         """
         node_ids = {node.id for node in self.graph.nodes}
 
-        # curate all missing edge endpoints
+        # Collect edges that point at nodes that do not exist
         missing_edge_endpoints: list[str] = []
         for edge in self.graph.edges:
             if edge.source not in node_ids:
@@ -232,7 +232,7 @@ class GraphGenerator:
                 f"Graph root node is missing: {self.graph.root_id}"
             )
 
-        # Check adjacent connections between source and target
+        # Treat edges as undirected to check connectivity
         adjacency: dict[str, set[str]] = defaultdict(set)
         for edge in self.graph.edges:
             if edge.source in node_ids and edge.target in node_ids:
@@ -245,7 +245,7 @@ class GraphGenerator:
             if node_id != self.graph.root_id and not adjacency[node_id]
         )
 
-        # traverse all node_ids to check their status
+        # Walk outward from the root to find every node it can reach
         visited: set[str] = set()
         if self.graph.root_id in node_ids:
             queue = deque([self.graph.root_id])
@@ -256,7 +256,7 @@ class GraphGenerator:
                 if node_id in visited:
                     continue
 
-                visited.add(str(node_id))
+                visited.add(node_id)
                 queue.extend(adjacency[node_id] - visited)
 
         unreachable_from_root = sorted(node_ids - visited)

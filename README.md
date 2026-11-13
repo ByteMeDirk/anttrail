@@ -1,5 +1,11 @@
 # AntTrail
 
+[![PyPI](https://img.shields.io/pypi/v/anttrail)](https://pypi.org/project/anttrail/)
+[![Python versions](https://img.shields.io/pypi/pyversions/anttrail)](https://pypi.org/project/anttrail/)
+[![CI](https://github.com/ByteMeDirk/anttrail/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ByteMeDirk/anttrail/actions/workflows/ci.yml)
+[![Security](https://github.com/ByteMeDirk/anttrail/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ByteMeDirk/anttrail/actions/workflows/security.yml)
+[![License](https://img.shields.io/pypi/l/anttrail)](LICENSE)
+
 AntTrail is a lightweight Python library for building structured, queryable repository graphs. It helps agents and other
 software systems retrieve object context without reading or scraping an entire repository.
 

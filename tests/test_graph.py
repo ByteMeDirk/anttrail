@@ -9,7 +9,7 @@ import yaml
 
 from anttrail.files import UnsupportedWriteFormatError
 from anttrail.graph import GraphGenerator
-from anttrail.models import BaseNode, EntityRelationshipType, NodeType
+from anttrail.models import BaseEdge, BaseNode, EntityRelationshipType, NodeType
 from anttrail.python_parser import SourceParseError
 
 ASSETS = Path(__file__).parent / "assets"
@@ -151,6 +151,35 @@ def test_validate_reports_missing_edge_endpoint(generator: GraphGenerator) -> No
     assert any(
         "missing target 'dir_2'" in item for item in integrity.missing_edge_endpoints
     )
+
+
+def test_validate_reports_missing_root_node(generator: GraphGenerator) -> None:
+    root_id = generator.graph.root_id
+    generator.graph.nodes = [n for n in generator.graph.nodes if n.id != root_id]
+
+    integrity = generator.validate()
+
+    assert not integrity.is_valid
+    assert f"Graph root node is missing: {root_id}" in integrity.missing_edge_endpoints
+    assert integrity.unreachable_from_root == sorted(
+        node.id for node in generator.graph.nodes
+    )
+
+
+def test_validate_reaches_node_with_two_parents_once(generator: GraphGenerator) -> None:
+    generator.graph.add_edge(
+        BaseEdge(
+            id="dir_2|contains|dir_1/dir_1_1",
+            source="dir_2",
+            type=EntityRelationshipType.CONTAINS,
+            target="dir_1/dir_1_1",
+        )
+    )
+
+    integrity = generator.validate()
+
+    assert integrity.unreachable_from_root == []
+    assert integrity.invalid_containment_nodes == ["dir_1/dir_1_1"]
 
 
 def test_write_file_writes_json(generator: GraphGenerator, tmp_path: Path) -> None:

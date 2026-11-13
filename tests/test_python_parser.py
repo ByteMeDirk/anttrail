@@ -140,3 +140,9 @@ def test_empty_source_has_no_symbols() -> None:
 def test_invalid_source_raises_syntax_error() -> None:
     with pytest.raises(SyntaxError):
         parse_python(b"def broken(:\n")
+
+
+def test_redefined_class_keeps_first_definition() -> None:
+    source = b"class A:\n    first = 1\n\n\nclass A:\n    second = 2\n"
+
+    assert set(qualified(source)) == {"A", "A.first"}
