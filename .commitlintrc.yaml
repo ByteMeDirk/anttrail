@@ -4,4 +4,4 @@ rules:
   scope-enum:
     - 2
     - always
-    - [cli, graph, parser, models, ci, docs, deps]
+    - [ cli, graph, parser, models, ci, docs, deps ]

@@ -19,7 +19,7 @@ runtimes:
 # dependencies. The pre-push action below runs them through uv instead.
 lint:
   ignore:
-    - linters: [ALL]
+    - linters: [ ALL ]
       paths:
         - tests/assets/**
         - tests/python_assets/**
@@ -47,4 +47,4 @@ actions:
       description: Run mypy and pytest through uv before pushing.
       run: uv run mypy && uv run pytest -q
       triggers:
-        - git_hooks: [pre-push]
+        - git_hooks: [ pre-push ]

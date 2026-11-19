@@ -4,9 +4,10 @@ import os
 from collections import defaultdict, deque
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, cast
 
 import yaml
+from pydantic.main import IncEx
 
 from anttrail.files import SupportedWriteFormats, UnsupportedWriteFormatError
 from anttrail.markdown_parser import parse_markdown
@@ -26,6 +27,9 @@ ParsedItem = TypeVar("ParsedItem")
 PARENT_EDGE_TYPES = frozenset(
     {EntityRelationshipType.CONTAINS, EntityRelationshipType.DECLARES}
 )
+# Every path is the root plus the node ID, and every edge is a parent and a child
+# that the node IDs already name, so the compact form leaves both out.
+COMPACT_EXCLUDE = cast(IncEx, {"edges": True, "nodes": {"__all__": {"path": True}}})
 DEFAULT_IGNORED_DIRECTORIES = frozenset(
     {
         ".git",
@@ -50,6 +54,7 @@ class GraphGenerator:
         section_depth: int | None = None,
         silence_read_failure: bool = False,
         silence_write_failure: bool = False,
+        compact: bool = False,
     ):
         """
         GraphGenerator builds a concise containment graph from a directory.
@@ -66,6 +71,7 @@ class GraphGenerator:
             silence_read_failure: Skip, rather than raise on, unreadable directories
                 and Python or Markdown files that cannot be read.
             silence_write_failure: Skip, rather than raise on, unsupported output formats.
+            compact: Leave the path of each node and all edges out of the output.
         """
         self.root_path: Path = directory_path
         self.ignored_directories: frozenset[str] = ignored_directories
@@ -73,6 +79,7 @@ class GraphGenerator:
         self.section_depth: int | None = section_depth
         self.silence_read_failure: bool = silence_read_failure
         self.silence_write_failure: bool = silence_write_failure
+        self.compact: bool = compact
 
         self.graph: BaseGraph = BaseGraph(
             schema_version=schema_version,
@@ -84,6 +91,12 @@ class GraphGenerator:
                     type=NodeType.DIRECTORY,
                 )
             ],
+        )
+
+    def to_json(self) -> str:
+        """Return the graph as JSON, leaving out paths and edges if `compact` is set."""
+        return self.graph.model_dump_json(
+            exclude=COMPACT_EXCLUDE if self.compact else None
         )
 
     def write_file(self, file_path: Path) -> None:
@@ -98,11 +111,13 @@ class GraphGenerator:
                 write failures are not silenced.
         """
         if SupportedWriteFormats.JSON.check(file_path):
-            file_path.write_text(self.graph.model_dump_json(), encoding="utf-8")
+            file_path.write_text(self.to_json(), encoding="utf-8")
         elif SupportedWriteFormats.YAML.check(file_path):
             file_path.write_text(
                 yaml.safe_dump(
-                    self.graph.model_dump(mode="json"),
+                    self.graph.model_dump(
+                        mode="json", exclude=COMPACT_EXCLUDE if self.compact else None
+                    ),
                     sort_keys=False,
                     allow_unicode=True,
                 ),

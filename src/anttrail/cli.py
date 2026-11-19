@@ -1,6 +1,7 @@
 """Terminal interface for anttrail."""
 
 import argparse
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -10,7 +11,9 @@ from anttrail.graph import (
     DEFAULT_SCHEMA_VERSION,
     GraphGenerator,
 )
+from anttrail.models import BaseGraph, NodeType
 from anttrail.python_parser import SourceParseError
+from anttrail.query import DEFAULT_FIND_LIMIT, GraphQuery, QueryError
 
 DISTRIBUTION_NAME = "anttrail"
 
@@ -32,15 +35,28 @@ def existing_directory(value: str) -> Path:
     return path.resolve()
 
 
-def non_negative_int(value: str) -> int:
-    """Handle a CLI value that must be an integer of 0 or more."""
-    try:
-        number = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{value} is not an integer.") from None
-    if number < 0:
-        raise argparse.ArgumentTypeError(f"{value} is less than 0.")
-    return number
+def integer_at_least(minimum: int) -> Callable[[str], int]:
+    """Return a CLI value parser for an integer that is `minimum` or more."""
+
+    def parse(value: str) -> int:
+        try:
+            number = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{value} is not an integer.") from None
+        if number < minimum:
+            raise argparse.ArgumentTypeError(f"{value} is less than {minimum}.")
+        return number
+
+    return parse
+
+
+def node_type(value: str) -> NodeType:
+    """Parse a node type name, ignoring case."""
+    for member in NodeType:
+        if member.value.casefold() == value.casefold():
+            return member
+    names = ", ".join(member.value for member in NodeType)
+    raise argparse.ArgumentTypeError(f"{value} is not one of {names}.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--symbol-depth",
-        type=non_negative_int,
+        type=integer_at_least(0),
         metavar="N",
         help=(
             "Levels of Python symbols to add below each .py file: 1 adds top-level "
@@ -113,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--section-depth",
-        type=non_negative_int,
+        type=integer_at_least(0),
         metavar="N",
         help=(
             "Levels of Markdown sections to add below each .md file: 1 adds top-level "
@@ -130,12 +146,91 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Leave the path of each node and all edges out of the graph output.",
+    )
+
+    queries = parser.add_argument_group(
+        "queries",
+        "Print a short answer instead of the graph. Each line is "
+        "PATH:LINE_START-LINE_END, a tab, the node type, a tab, and the node ID.",
+    )
+    query = queries.add_mutually_exclusive_group()
+    query.add_argument(
+        "--outline",
+        metavar="PATH",
+        help="List the sections or symbols of one file, indented by depth.",
+    )
+    query.add_argument(
+        "--find",
+        metavar="TEXT",
+        help="List the nodes whose name contains TEXT, ignoring case.",
+    )
+    query.add_argument(
+        "--at",
+        metavar="PATH:LINE",
+        help="Name the section or symbol that contains a line, then its ancestors.",
+    )
+    query.add_argument(
+        "--show",
+        metavar="ID",
+        help="Print the lines of one section or symbol, and nothing else.",
+    )
+    queries.add_argument(
+        "--type",
+        type=node_type,
+        metavar="TYPE",
+        help=(
+            "With --find, keep only nodes of this type: "
+            f"{', '.join(member.value for member in NodeType)}."
+        ),
+    )
+    queries.add_argument(
+        "--limit",
+        type=integer_at_least(1),
+        metavar="N",
+        help=f"With --find, the most matches to list. Default: {DEFAULT_FIND_LIMIT}.",
+    )
+
     return parser
+
+
+def check_option_combinations(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    """Exit with a usage error for options that do not work together."""
+    if args.find is None and (args.type is not None or args.limit is not None):
+        parser.error("--type and --limit need --find.")
+    is_query = any(
+        option is not None for option in (args.outline, args.find, args.at, args.show)
+    )
+    if is_query and (args.output or args.compact):
+        parser.error(
+            "A query prints lines, so it cannot be used with --output or --compact."
+        )
+
+
+def answer_query(args: argparse.Namespace, graph: BaseGraph) -> list[str] | None:
+    """Answer the query option that was given, or return None if there is none."""
+    query = GraphQuery(graph, args.directory)
+    if args.outline is not None:
+        return query.outline(args.outline)
+    if args.find is not None:
+        return query.find(args.find, args.type, args.limit or DEFAULT_FIND_LIMIT)
+    if args.at is not None:
+        return query.at(args.at)
+    if args.show is not None:
+        return query.show(args.show)
+    return None
 
 
 def main(argv: list[str] | None = None) -> None:
     """Main entry point."""
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    check_option_combinations(parser, args)
 
     graph_generator = GraphGenerator(
         directory_path=args.directory,
@@ -147,19 +242,28 @@ def main(argv: list[str] | None = None) -> None:
         section_depth=args.section_depth,
         silence_read_failure=args.silence_read_failure,
         silence_write_failure=args.silence_write_failure,
+        compact=args.compact,
     )
 
     try:
-        graph_generator.run()
+        graph = graph_generator.run()
 
         if args.validate:
             print(graph_generator.validate().model_dump_json())
 
-        if args.output:
+        answer = answer_query(args, graph)
+        if answer is not None:
+            print("\n".join(answer))
+        elif args.output:
             graph_generator.write_file(args.output)
         else:
-            print(graph_generator.graph.model_dump_json())
-    except (OSError, SourceParseError, UnsupportedWriteFormatError) as error:
+            print(graph_generator.to_json())
+    except (
+        OSError,
+        SourceParseError,
+        UnsupportedWriteFormatError,
+        QueryError,
+    ) as error:
         raise SystemExit(f"anttrail: error: {error}") from error
 
 

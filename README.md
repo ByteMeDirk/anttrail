@@ -112,8 +112,45 @@ anttrail ./src --symbol-depth 2
 anttrail ./src --symbol-depth 0
 ```
 
-Without the option, AntTrail adds every level. If a Python file has a syntax error or cannot be read, AntTrail stops with
-a one-line error. Add `--silence-read-failure` to keep the file's node and skip its symbols instead.
+Without the option, AntTrail adds every level. If a Python file has a syntax error or cannot be read, AntTrail stops
+with a one-line error. Add `--silence-read-failure` to keep the file's node and skip its symbols instead.
+
+### Include Markdown sections
+
+AntTrail adds a `Section` node for each heading of a `.md` or `.markdown` file, with the lines the section spans. Use
+`--section-depth` to limit how many levels it adds:
+
+```bash
+# Top-level headings only.
+anttrail ./docs --section-depth 1
+
+# Files and directories only.
+anttrail ./docs --section-depth 0
+```
+
+Without the option, AntTrail adds every level. Headings inside fenced code blocks and front matter are ignored.
+
+### Ask a question instead of reading the graph
+
+The full graph grows with the repository. To get a short answer instead, add one query option. Each line of the answer
+has the form `PATH:LINE_START-LINE_END`, a tab, the node type, a tab, and the node ID.
+
+```bash
+# What is in this file? Sections or symbols, indented by depth.
+anttrail . --outline README.md
+
+# Where is a node with this name? Add --type and --limit to narrow the matches.
+anttrail . --find area --type Method
+
+# Which section or symbol contains this line, and what contains that?
+anttrail . --at README.md:57
+
+# What does this section or symbol say? Prints those lines and nothing else.
+anttrail . --show "README.md::AntTrail/Quickstart"
+```
+
+To shrink the full graph instead, add `--compact`, which leaves out each node's `path` and all edges. For when to use
+which option, see [Agent usage](docs/agent-usage.md).
 
 ### Skip or include directories
 
@@ -132,16 +169,22 @@ For the structure of the output and a full example, see [Graph format](docs/grap
 anttrail [OPTIONS] DIRECTORY
 ```
 
-| Option                     | Short form   | Purpose                                                                  |
-|----------------------------|--------------|--------------------------------------------------------------------------|
-| `--version`                | `-v`         | Show the installed AntTrail version and exit                             |
-| `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                          |
-| `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console |
-| `--validate`               | -            | Validate the generated graph before output                               |
-| `--symbol-depth N`         | -            | Limit how many levels of Python symbols are added; `0` adds none         |
-| `--silence-read-failure`   | -            | Skip directories and Python files that cannot be read instead of failing |
-| `--silence-write-failure`  | -            | Do not fail when the output format is unsupported                        |
-| `--no-ignore`              | -            | Include the directories that are skipped by default                      |
+| Option                     | Short form   | Purpose                                                                                   |
+|----------------------------|--------------|-------------------------------------------------------------------------------------------|
+| `--version`                | `-v`         | Show the installed AntTrail version and exit                                              |
+| `--schema-version VERSION` | `-s VERSION` | Select the graph schema version                                                           |
+| `--output PATH`            | `-o PATH`    | Write the generated graph to a file; otherwise print JSON to the console                  |
+| `--validate`               | -            | Validate the generated graph before output                                                |
+| `--symbol-depth N`         | -            | Limit how many levels of Python symbols are added; `0` adds none                          |
+| `--section-depth N`        | -            | Limit how many levels of Markdown sections are added; `0` adds none                       |
+| `--compact`                | -            | Leave node paths and edges out of the output                                              |
+| `--outline PATH`           | -            | Print the sections or symbols of one file instead of the graph                            |
+| `--find TEXT`              | -            | Print the nodes whose name contains `TEXT`; use with `--type` and `--limit`               |
+| `--at PATH:LINE`           | -            | Print the node that contains a line, then its ancestors                                   |
+| `--show ID`                | -            | Print the lines of one section or symbol                                                  |
+| `--silence-read-failure`   | -            | Skip directories, Python files, and Markdown files that cannot be read instead of failing |
+| `--silence-write-failure`  | -            | Do not fail when the output format is unsupported                                         |
+| `--no-ignore`              | -            | Include the directories that are skipped by default                                       |
 
 Run `anttrail --help` to view the complete command-line help for the installed version.
 
@@ -159,15 +202,19 @@ AntTrail currently:
 - Traverses a configured repository or directory root.
 - Creates graph nodes for directories and files.
 - Creates graph nodes for the classes, functions, methods, and variables declared in Python files.
+- Creates graph nodes for the headings of Markdown files, with their line ranges.
 - Creates directed `CONTAINS` relationships for immediate parent-child filesystem relationships.
-- Creates directed `DECLARES` relationships from a file or class to the symbols it declares.
+- Creates directed `DECLARES` relationships from a file, class, or section to the symbols or sections it declares.
 - Uses normalized root-relative IDs for stable graph traversal.
 - Validates containment relationships, node references, root reachability, and weak graph connectivity.
 - Exports the graph as JSON or YAML.
+- Answers short questions about the graph: the outline of a file, nodes by name, the node at a line, and the lines of
+  one node.
 - Skips common non-source directories such as `.git` and virtual environments.
 
-AntTrail reads Python files only for the symbols listed above. It does not extract imports, calls, inheritance, or
-instance attributes, and it does not extract content from other file types.
+AntTrail reads Python files only for the symbols listed above, and Markdown files only for their headings. It does not
+extract imports, calls, inheritance, or instance attributes, and it does not extract content from other file types. The
+queries match node names and positions. They do not search text, so use `grep` for that.
 
 ## Motivation
 
@@ -193,7 +240,7 @@ Future versions may support:
 - Object parsing, such as modules, classes, functions, imports, etc. if the object is a `.py` file.
 - NLP-based metadata and entity extraction from non-standard objects.
 - OCR-based metadata extraction from images and documents.
-- Graph querying, filtering, and traversal (limited).
+- Graph traversal beyond the current queries.
 - Dreaming big here: export to JSON, graph databases, GraphML, DOT, and Cypher-compatible formats.
 
 AntTrail is intended to remain lightweight and deterministic, so I will not be incorporating an LLM to do the heavy

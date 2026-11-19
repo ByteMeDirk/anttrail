@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -47,8 +47,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        os: [ ubuntu-latest ]
+        python-version: [ "3.11", "3.12", "3.13", "3.14" ]
         include:
           - os: macos-latest
             python-version: "3.12"
@@ -98,7 +98,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [lint, typecheck, test, test-min-deps, build]
+    needs: [ lint, typecheck, test, test-min-deps, build ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -186,3 +186,92 @@ def test_undecodable_markdown_file_exits_with_one_line_error(tmp_path: Path) -> 
     assert message.startswith("anttrail: error: ")
     assert "broken.md" in message
     assert "\n" not in message
+
+
+MARKDOWN_ASSETS = Path(__file__).parent / "markdown_assets"
+
+
+def test_outline_prints_lines_instead_of_the_graph(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(MARKDOWN_ASSETS), "--outline", "guide.md"])
+
+    first_line = capsys.readouterr().out.splitlines()[0]
+    assert first_line == "guide.md:1-26\tSection\tguide.md::Guide"
+
+
+def test_find_limits_matches(capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(MARKDOWN_ASSETS), "--find", "e", "--limit", "1"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert lines[1].startswith("(showing 1 of ")
+
+
+def test_find_type_ignores_case(capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(MARKDOWN_ASSETS), "--find", "guide", "--type", "file"])
+
+    assert capsys.readouterr().out == "guide.md\tFile\tguide.md\n"
+
+
+def test_at_prints_the_containing_section(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(MARKDOWN_ASSETS), "--at", "guide.md:26"])
+
+    assert "Deep detail" in capsys.readouterr().out.splitlines()[0]
+
+
+def test_show_prints_only_the_section(capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(MARKDOWN_ASSETS), "--show", "guide.md::Guide/Install"])
+
+    output = capsys.readouterr().out
+    assert output.startswith("## Install\n")
+    assert "pip install thing" in output
+    assert "## Usage" not in output
+
+
+def test_query_error_exits_with_one_line_error() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(MARKDOWN_ASSETS), "--show", "guide.md::Missing"])
+
+    assert str(exit_info.value).startswith("anttrail: error: No node")
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--outline", "guide.md", "--find", "x"],
+        ["--type", "File"],
+        ["--limit", "5"],
+        ["--find", "x", "--limit", "0"],
+        ["--find", "x", "--type", "Nonsense"],
+        ["--find", "x", "--output", "out.json"],
+        ["--find", "x", "--compact"],
+    ],
+)
+def test_invalid_query_options_exit_with_usage_error(options: list[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(MARKDOWN_ASSETS), *options])
+
+    assert exit_info.value.code == 2
+
+
+def test_compact_leaves_out_paths_and_edges(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main([str(MARKDOWN_ASSETS), "--compact"])
+
+    graph = json.loads(capsys.readouterr().out)
+    assert "edges" not in graph
+    assert all("path" not in node for node in graph["nodes"])
+    assert all("id" in node for node in graph["nodes"])
+
+
+def test_compact_applies_to_written_json_and_yaml(tmp_path: Path) -> None:
+    for name in ("graph.json", "graph.yaml"):
+        main([str(MARKDOWN_ASSETS), "--compact", "--output", str(tmp_path / name)])
+
+        text = (tmp_path / name).read_text(encoding="utf-8")
+        assert "edges" not in text
+        assert "path" not in text

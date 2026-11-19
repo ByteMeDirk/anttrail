@@ -23,7 +23,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from anttrail.graph import GraphGenerator
+from anttrail.graph import COMPACT_EXCLUDE, GraphGenerator
+from anttrail.models import NodeType
+from anttrail.query import GraphQuery
 
 BENCHMARKS_DIRECTORY = Path(__file__).resolve().parent
 FIXTURE_DIRECTORY = BENCHMARKS_DIRECTORY / "fixtures" / "sample_repo"
@@ -58,9 +60,11 @@ class Verdict(Enum):
 class Task(BaseModel):
     """A question, and the ways to answer it.
 
-    `anttrail_today` is what AntTrail can do now, or `None` if the graph does not hold
-    the information. `anttrail_query` is the targeted answer that Stage 3 of
-    `docs/phase-3-strategy.md` adds, and is `None` until that query option exists.
+    `anttrail_today` is what AntTrail did before the query options: print the full
+    graph. `anttrail_query` is the targeted answer from Stage 3 of
+    `docs/phase-3-strategy.md`, or `None` if no query option answers the question.
+    `expected` is the verdict that `--check` accepts. It is `SMALLER` unless the
+    comparison is known to favor text tools, and a task that sets another value says why.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -70,6 +74,7 @@ class Task(BaseModel):
     baseline: Callable[[Path], Answer]
     anttrail_today: Callable[[Path], Answer] | None = None
     anttrail_query: Callable[[Path], Answer] | None = None
+    expected: Verdict = Verdict.SMALLER
 
 
 class TaskResult(BaseModel):
@@ -83,6 +88,7 @@ class TaskResult(BaseModel):
     anttrail_today: Answer | None
     anttrail_query: Answer | None
     verdict: Verdict
+    expected: Verdict
 
 
 class Scale(BaseModel):
@@ -93,6 +99,7 @@ class Scale(BaseModel):
     node_count: int
     edge_count: int
     size_bytes: int
+    compact_size_bytes: int
     crawl_seconds: float
 
 
@@ -107,15 +114,25 @@ def join_lines(lines: Sequence[str]) -> str:
 
 
 @cache
-def full_graph_json(root: Path) -> str:
-    """Return the full graph of `root` as compact JSON that ignores where `root` is."""
-    graph = GraphGenerator(root).run().model_dump(mode="json")
+def full_graph_json(root: Path, compact: bool = False) -> str:
+    """Return the graph of `root` as JSON that ignores where `root` is.
+
+    With `compact`, the paths and edges are left out, as `anttrail --compact` does.
+    """
+    graph = (
+        GraphGenerator(root)
+        .run()
+        .model_dump(mode="json", exclude=COMPACT_EXCLUDE if compact else None)
+    )
     graph["created_at"] = PLACEHOLDER_TIMESTAMP
     for node in graph["nodes"]:
-        relative = Path(node["path"]).relative_to(root).as_posix()
-        node["path"] = (
-            PLACEHOLDER_ROOT if relative == "." else f"{PLACEHOLDER_ROOT}/{relative}"
-        )
+        if "path" in node:
+            relative = Path(node["path"]).relative_to(root).as_posix()
+            node["path"] = (
+                PLACEHOLDER_ROOT
+                if relative == "."
+                else f"{PLACEHOLDER_ROOT}/{relative}"
+            )
     return json.dumps(graph, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -212,36 +229,85 @@ def enclosing_symbol_baseline(root: Path) -> Answer:
     return Answer(calls=1, size_bytes=size_of(text))
 
 
+def graph_query(root: Path) -> GraphQuery:
+    """Crawl `root` and return the queries that answer questions about it."""
+    return GraphQuery(GraphGenerator(root).run(), root)
+
+
+def file_outline_query(root: Path) -> Answer:
+    """`anttrail DIRECTORY --outline docs/usage.md`"""
+    lines = graph_query(root).outline("docs/usage.md")
+    return Answer(calls=1, size_bytes=size_of(join_lines(lines)))
+
+
+def section_text_query(root: Path) -> Answer:
+    """`--find` the section to learn its ID, then `--show` that ID."""
+    query = graph_query(root)
+    found = query.find("Configure pricing", NodeType.SECTION)
+    section_id = found[0].split("\t")[2]
+    text = query.show(section_id)
+    return Answer(
+        calls=2, size_bytes=size_of(join_lines(found)) + size_of(join_lines(text))
+    )
+
+
+def find_class_query(root: Path) -> Answer:
+    """`anttrail DIRECTORY --find Cart --type Class`
+
+    The output gives the first and last line of the class.
+    """
+    lines = graph_query(root).find("Cart", NodeType.CLASS)
+    return Answer(calls=1, size_bytes=size_of(join_lines(lines)))
+
+
+def enclosing_symbol_query(root: Path) -> Answer:
+    """`anttrail DIRECTORY --at src/shop/cart.py:LINE`, for the line of `subtotal`."""
+    cart = root / "src" / "shop" / "cart.py"
+    line = next(n for n, text in enumerate(read_lines(cart), 1) if "subtotal" in text)
+    lines = graph_query(root).at(f"src/shop/cart.py:{line}")
+    return Answer(calls=1, size_bytes=size_of(join_lines(lines)))
+
+
+# The `expected` verdicts record where text tools are known to win on bytes alone.
+# `ls` prints bare names, and a one-line `grep` result or a short list of headings is
+# smaller than an AntTrail line, which also carries the line range, type, and ID.
 TASKS: tuple[Task, ...] = (
     Task(
         name="list_directory",
         question="Which files are in docs/?",
         baseline=list_directory_baseline,
         anttrail_today=full_graph_answer,
+        expected=Verdict.LARGER,
     ),
     Task(
         name="file_outline",
         question="What are the headings of docs/usage.md?",
         baseline=file_outline_baseline,
         anttrail_today=full_graph_answer,
+        anttrail_query=file_outline_query,
+        expected=Verdict.LARGER,
     ),
     Task(
         name="section_text",
         question="What does docs/usage.md say under 'Configure pricing'?",
         baseline=section_text_baseline,
         anttrail_today=full_graph_answer,
+        anttrail_query=section_text_query,
     ),
     Task(
         name="find_class",
         question="Where is the class Cart defined?",
         baseline=find_class_baseline,
         anttrail_today=full_graph_answer,
+        anttrail_query=find_class_query,
+        expected=Verdict.LARGER,
     ),
     Task(
         name="enclosing_symbol",
         question="Which method contains the 'subtotal' line of cart.py?",
         baseline=enclosing_symbol_baseline,
         anttrail_today=full_graph_answer,
+        anttrail_query=enclosing_symbol_query,
     ),
 )
 
@@ -270,6 +336,7 @@ def run_tasks(root: Path, tasks: Sequence[Task] = TASKS) -> list[TaskResult]:
                 anttrail_today=today,
                 anttrail_query=query,
                 verdict=judge(baseline, query or today),
+                expected=task.expected,
             )
         )
     return results
@@ -284,6 +351,7 @@ def measure_scale(root: Path) -> Scale:
         node_count=len(graph.nodes),
         edge_count=len(graph.edges),
         size_bytes=size_of(full_graph_json(root)),
+        compact_size_bytes=size_of(full_graph_json(root, compact=True)),
         crawl_seconds=crawl_seconds,
     )
 
@@ -323,9 +391,11 @@ def render_results(results: Sequence[TaskResult]) -> str:
 
 def render_scale(label: str, scale: Scale) -> str:
     """Format one scale measurement."""
+    saved = 1 - scale.compact_size_bytes / scale.size_bytes
     return (
         f"{label}: {scale.node_count:,} nodes, {scale.edge_count:,} edges, "
-        f"{scale.size_bytes:,} B full graph, crawl {scale.crawl_seconds * 1000:.0f} ms"
+        f"{scale.size_bytes:,} B full graph, {scale.compact_size_bytes:,} B compact "
+        f"({saved:.0%} smaller), crawl {scale.crawl_seconds * 1000:.0f} ms"
     )
 
 
@@ -338,8 +408,8 @@ def main(argv: Sequence[str] | None = None, tasks: Sequence[Task] = TASKS) -> in
         "--check",
         action="store_true",
         help=(
-            "Exit with status 1 unless AntTrail's answer is smaller than the "
-            "baseline for every task."
+            "Exit with status 1 if any task's verdict differs from the verdict "
+            "that the task expects."
         ),
     )
     args = parser.parse_args(argv)
@@ -352,11 +422,9 @@ def main(argv: Sequence[str] | None = None, tasks: Sequence[Task] = TASKS) -> in
     print("  " + render_scale("This repository", measure_scale(REPOSITORY_DIRECTORY)))
 
     if args.check:
-        failed = [r.name for r in results if r.verdict is not Verdict.SMALLER]
+        failed = [r.name for r in results if r.verdict is not r.expected]
         if failed:
-            print(
-                f"\nNot smaller than the baseline: {', '.join(failed)}", file=sys.stderr
-            )
+            print(f"\nUnexpected verdict: {', '.join(failed)}", file=sys.stderr)
             return 1
     return 0
 

@@ -109,12 +109,35 @@ def test_main_reports_without_failing_by_default(
     assert "This repository:" in output
 
 
+def test_compact_graph_is_at_least_60_percent_smaller() -> None:
+    full = len(full_graph_json(FIXTURE_DIRECTORY))
+    compact = len(full_graph_json(FIXTURE_DIRECTORY, compact=True))
+
+    assert compact <= full * 0.4
+
+
+def test_check_passes_for_the_recorded_verdicts() -> None:
+    assert main(["--check"]) == 0
+
+
 def test_check_passes_when_every_answer_is_smaller() -> None:
     task = Task(
         name="example",
         question="Example?",
         baseline=constant_answer(100),
         anttrail_query=constant_answer(1),
+    )
+
+    assert main(["--check"], tasks=[task]) == 0
+
+
+def test_check_passes_when_a_known_larger_answer_stays_larger() -> None:
+    task = Task(
+        name="example",
+        question="Example?",
+        baseline=constant_answer(100),
+        anttrail_query=constant_answer(200),
+        expected=Verdict.LARGER,
     )
 
     assert main(["--check"], tasks=[task]) == 0
@@ -131,4 +154,4 @@ def test_check_fails_when_an_answer_is_not_smaller(
     )
 
     assert main(["--check"], tasks=[task]) == 1
-    assert "Not smaller than the baseline: example" in capsys.readouterr().err
+    assert "Unexpected verdict: example" in capsys.readouterr().err
