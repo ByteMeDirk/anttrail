@@ -28,7 +28,8 @@ ASSET_NODE_IDS = {
 
 @pytest.fixture
 def generator() -> GraphGenerator:
-    generator = GraphGenerator(ASSETS)
+    # These tests check the filesystem graph, so they leave out the README's sections.
+    generator = GraphGenerator(ASSETS, section_depth=0)
     generator.run()
     return generator
 
@@ -358,3 +359,148 @@ def test_symbol_depth_zero_ignores_unparseable_files(broken_python_tree: Path) -
     generator.run()
 
     assert node_ids(generator) == {".", "broken.py", "ok.py"}
+
+
+MARKDOWN_ASSETS = Path(__file__).parent / "markdown_assets"
+
+
+def section_nodes(generator: GraphGenerator) -> dict[str, BaseNode]:
+    return {
+        node.id: node for node in generator.graph.nodes if node.type is NodeType.SECTION
+    }
+
+
+def test_markdown_files_get_section_nodes() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS)
+    generator.run()
+
+    sections = section_nodes(generator)
+
+    assert set(sections) == {
+        "guide.md::Guide",
+        "guide.md::Guide/Install",
+        "guide.md::Guide/Usage",
+        "guide.md::Guide/Usage/Example",
+        "guide.md::Guide/Usage/Example (2)",
+        "guide.md::Guide/Paths and - slashes",
+        "guide.md::Guide/Paths and - slashes/Deep detail",
+        "guide.md::Setext Title",
+        "docs/notes.markdown::Notes",
+    }
+
+
+def test_section_nodes_carry_the_heading_text_and_line_range() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS)
+    generator.run()
+
+    node = section_nodes(generator)["guide.md::Guide/Paths and - slashes"]
+
+    assert node.name == "Paths and / slashes"
+    assert node.path == MARKDOWN_ASSETS / "guide.md"
+    assert (node.line_start, node.line_end) == (22, 26)
+
+
+def test_sections_are_declared_by_their_file_or_parent_section() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS)
+    generator.run()
+
+    declares = {
+        (edge.source, edge.target)
+        for edge in generator.graph.edges
+        if edge.type is EntityRelationshipType.DECLARES
+    }
+
+    assert ("guide.md", "guide.md::Guide") in declares
+    assert ("guide.md", "guide.md::Setext Title") in declares
+    assert ("guide.md::Guide", "guide.md::Guide/Install") in declares
+    assert ("guide.md::Guide/Usage", "guide.md::Guide/Usage/Example (2)") in declares
+    assert ("docs/notes.markdown", "docs/notes.markdown::Notes") in declares
+
+
+def test_graph_with_sections_is_valid() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS)
+    generator.run()
+
+    assert generator.validate().is_valid
+
+
+def test_markdown_suffix_is_matched_without_regard_to_case(tmp_path: Path) -> None:
+    (tmp_path / "NOTES.MD").write_text("# Upper\n", encoding="utf-8")
+    generator = GraphGenerator(tmp_path)
+    generator.run()
+
+    assert set(section_nodes(generator)) == {"NOTES.MD::Upper"}
+
+
+def test_byte_order_mark_is_not_part_of_the_first_heading(tmp_path: Path) -> None:
+    (tmp_path / "bom.md").write_bytes(b"\xef\xbb\xbf# Title\n")
+    generator = GraphGenerator(tmp_path)
+    generator.run()
+
+    assert set(section_nodes(generator)) == {"bom.md::Title"}
+
+
+def test_section_depth_zero_adds_no_sections() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS, section_depth=0)
+    generator.run()
+
+    assert section_nodes(generator) == {}
+
+
+def test_section_depth_one_adds_top_level_headings_only() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS, section_depth=1)
+    generator.run()
+
+    assert set(section_nodes(generator)) == {
+        "guide.md::Guide",
+        "guide.md::Setext Title",
+        "docs/notes.markdown::Notes",
+    }
+
+
+def test_section_depth_limit_keeps_graph_valid() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS, section_depth=2)
+    generator.run()
+
+    assert generator.validate().is_valid
+
+
+def test_symbol_depth_does_not_limit_sections() -> None:
+    generator = GraphGenerator(MARKDOWN_ASSETS, symbol_depth=0)
+    generator.run()
+
+    assert len(section_nodes(generator)) == 9
+
+
+@pytest.fixture
+def unreadable_markdown_tree(tmp_path: Path) -> Path:
+    (tmp_path / "ok.md").write_text("# Fine\n", encoding="utf-8")
+    (tmp_path / "broken.md").write_bytes(b"# Bad \xff\xfe bytes\n")
+    return tmp_path
+
+
+def test_undecodable_markdown_file_raises_by_default(
+    unreadable_markdown_tree: Path,
+) -> None:
+    with pytest.raises(SourceParseError, match="broken.md"):
+        GraphGenerator(unreadable_markdown_tree).run()
+
+
+def test_undecodable_markdown_file_is_skipped_when_silenced(
+    unreadable_markdown_tree: Path,
+) -> None:
+    generator = GraphGenerator(unreadable_markdown_tree, silence_read_failure=True)
+    generator.run()
+
+    assert "broken.md" in node_ids(generator)
+    assert set(section_nodes(generator)) == {"ok.md::Fine"}
+
+
+def test_section_depth_zero_does_not_open_markdown_files(
+    unreadable_markdown_tree: Path,
+) -> None:
+    generator = GraphGenerator(unreadable_markdown_tree, section_depth=0)
+
+    generator.run()
+
+    assert section_nodes(generator) == {}

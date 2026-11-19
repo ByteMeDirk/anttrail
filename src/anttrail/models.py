@@ -16,6 +16,7 @@ class NodeType(Enum):
     METHOD = "Method"
     FUNCTION = "Function"
     VARIABLE = "Variable"
+    SECTION = "Section"
 
 
 class EntityRelationshipType(Enum):

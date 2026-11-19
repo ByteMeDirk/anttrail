@@ -3,3 +3,6 @@ extends: markdownlint/style/prettier
 # Pull request templates start with a section heading, and wide tables are fine.
 MD041: false
 MD060: false
+# A changelog repeats "Added" and "Changed" under each version.
+MD024:
+  siblings_only: true

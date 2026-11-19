@@ -2,7 +2,7 @@ name: Security
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
 
@@ -40,7 +40,7 @@ jobs:
   security-ok:
     name: security-ok
     if: always()
-    needs: [audit, dependency-review]
+    needs: [ audit, dependency-review ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
