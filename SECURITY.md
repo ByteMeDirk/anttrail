@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-AntTrail is pre-alpha. Only the latest release on PyPI receives security fixes. If you are on an older version, upgrade
+AntTrail is alpha. Only the latest release on PyPI receives security fixes. If you are on an older version, upgrade
 before reporting, in case the problem is already fixed.
 
 | Version        | Supported |
