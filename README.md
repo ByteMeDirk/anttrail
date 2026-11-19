@@ -248,4 +248,5 @@ lifting. I want it to be local-first, lightweight, deterministic, extensible, an
 
 ---
 
-Please note that this is currently a project in its infancy.
+AntTrail is alpha. The command line and the graph format may change between minor versions, and the
+[changelog](CHANGELOG.md) records each change.
